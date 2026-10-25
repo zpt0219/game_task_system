@@ -258,17 +258,17 @@ export class NodeInspector {
     const branchesCard = document.createElement('div');
     branchesCard.className = 'inspector-section';
     branchesCard.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <div class="inspector-label" style="margin-bottom: 0;">
-          ActionSequence 分支 (${ev.branches.length} 项，自上而下匹配)
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="inspector-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; font-weight: 700;">
+          ActionSequence 分支 (${ev.branches.length} 项)
         </div>
-        <div style="display: flex; gap: 4px;">
+        <div style="display: flex; gap: 6px; flex-shrink: 0;">
           ${
             incomingTrigIds.length > 0
-              ? `<button id="btnAddCondBranch" class="mini-btn-action" style="padding: 2px 8px; font-size: 11px;">+ 条件行为</button>`
+              ? `<button id="btnAddCondBranch" class="mini-btn-action">+ 条件行为</button>`
               : ''
           }
-          <button id="btnAddDefaultBranch" class="mini-btn" style="padding: 2px 8px; font-size: 11px;">+ 默认行为</button>
+          <button id="btnAddDefaultBranch" class="mini-btn">+ 默认行为</button>
         </div>
       </div>
       <div id="branchesContainer"></div>
@@ -309,7 +309,7 @@ export class NodeInspector {
       bContainer.appendChild(bEl);
     });
 
-    // 4. 关联影响摘要
+    // 5. 关联影响摘要
     const relCard = document.createElement('div');
     relCard.className = 'inspector-section';
     const writtenKeys = varsWrittenBy(p, ev);
@@ -322,9 +322,13 @@ export class NodeInspector {
               .map((k) => {
                 const v = p.vars.find((x) => x.key === k);
                 return `
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; font-size: 12px;">
-                <span>${v ? v.icon : '📝'} <b>${v ? v.label : k}</b> <span style="color:#64748b;">(${k})</span></span>
-                <button class="mini-btn btn-view-var" data-key="${k}" style="font-size: 10px; padding: 2px 6px;">专属图谱 ▶</button>
+              <div style="display: flex; justify-content: space-between; align-items: center; background: #0b0d17; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 7px 10px; margin-bottom: 6px; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden;">
+                  <span style="font-size: 14px; flex-shrink: 0;">${v ? v.icon : '📝'}</span>
+                  <span style="font-weight: 600; font-size: 12px; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${v ? v.label : k}</span>
+                  <span style="color: #64748b; font-size: 10px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">(${k})</span>
+                </div>
+                <button class="mini-btn btn-view-var" data-key="${k}" style="font-size: 11px; padding: 3px 8px; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3); color: #38bdf8; white-space: nowrap; flex-shrink: 0;">专属图谱 ▶</button>
               </div>
             `;
               })
@@ -362,12 +366,12 @@ export class NodeInspector {
     `;
 
     card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 11px; color: ${isActive ? '#10b981' : '#64748b'}; font-weight: 700;">#${bIdx + 1}</span>
-          <input type="text" class="branch-title-input" value="${this.escape(b.title)}" style="background: transparent; border: none; border-bottom: 1px dashed #475569; color: #f8fafc; font-size: 13px; font-weight: 700; width: 140px; outline: none;" />
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+          <span style="font-size: 11px; color: ${isActive ? '#10b981' : '#64748b'}; font-weight: 700; flex-shrink: 0;">#${bIdx + 1}</span>
+          <input type="text" class="branch-title-input" value="${this.escape(b.title)}" placeholder="分支标题" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; color: #f8fafc; font-size: 13px; font-weight: 700; outline: none;" />
         </div>
-        <div style="display: flex; gap: 4px;">
+        <div style="display: flex; gap: 4px; flex-shrink: 0;">
           <button class="mini-btn btn-move-up" title="上移" ${bIdx === 0 ? 'disabled' : ''}>↑</button>
           <button class="mini-btn btn-move-down" title="下移" ${bIdx === ev.branches.length - 1 ? 'disabled' : ''}>↓</button>
           <button class="mini-btn danger-btn btn-del-branch" title="删除分支">×</button>
@@ -378,25 +382,25 @@ export class NodeInspector {
       ${
         isDefaultBranch
           ? `
-        <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span>🛡️</span>
-            <span><b>默认行为</b> (当未连入 Trigger 或上方条件均不满足时执行)</span>
+        <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+            <span style="flex-shrink: 0;">🛡️</span>
+            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><b>默认行为</b> (无前置条件 / 保底执行)</span>
           </div>
           ${
             incomingTrigIds.length > 0
-              ? `<button class="mini-btn btn-turn-into-cond" style="font-size: 10px; padding: 1px 6px;">转为条件行为</button>`
+              ? `<button class="mini-btn btn-turn-into-cond" style="font-size: 10px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;">转为条件行为</button>`
               : ''
           }
         </div>
       `
           : `
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">
-              ⚡ 触发条件 (需满足勾选的连入 Trigger，全部满足时触发)
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 6px;">
+            <div style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase; white-space: nowrap;">
+              ⚡ 触发条件 (需满足勾选的连入 Trigger)
             </div>
-            <button class="mini-btn btn-turn-into-default" style="font-size: 10px; padding: 1px 6px;">转为默认行为</button>
+            <button class="mini-btn btn-turn-into-default" style="font-size: 10px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;">转为默认行为</button>
           </div>
           <div class="branch-triggers-wrap" style="display: flex; flex-wrap: wrap; gap: 6px;">
             ${
@@ -424,12 +428,12 @@ export class NodeInspector {
       <!-- 步骤列表 -->
       <div class="steps-container"></div>
 
-      <!-- 添加步骤工具条 -->
-      <div style="display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap;">
-        <button class="mini-btn btn-add-step" data-type="say" style="font-size: 10px; padding: 3px 6px;">+ 💬 对话</button>
-        <button class="mini-btn btn-add-step" data-type="choice" style="font-size: 10px; padding: 3px 6px;">+ 🔀 选项</button>
-        <button class="mini-btn btn-add-step" data-type="set" style="font-size: 10px; padding: 3px 6px;">+ 📝 改变量</button>
-        <button class="mini-btn btn-add-step" data-type="add" style="font-size: 10px; padding: 3px 6px;">+ ➕ 增减数值</button>
+      <!-- 添加步骤工具条 (网格 4 列排列，绝不折行成单字) -->
+      <div class="step-add-toolbar">
+        <button class="step-add-pill btn-add-step" data-type="say">💬 对话</button>
+        <button class="step-add-pill btn-add-step" data-type="choice">🔀 选项</button>
+        <button class="step-add-pill btn-add-step" data-type="set">📝 赋值</button>
+        <button class="step-add-pill btn-add-step" data-type="add">➕ 增减</button>
       </div>
     `;
 
@@ -568,13 +572,6 @@ export class NodeInspector {
   private renderStepCard(ev: EventDef, b: Branch, s: Step, sIdx: number): HTMLElement {
     const card = document.createElement('div');
     card.className = 'step-card';
-    card.style.cssText = `
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 6px;
-      padding: 8px;
-      margin-top: 6px;
-    `;
 
     const typeIcons: Record<string, string> = {
       say: '💬 对话',
@@ -589,65 +586,65 @@ export class NodeInspector {
     if (s.type === 'say') {
       const say = s as SayStep;
       innerForm = `
-        <div style="display: grid; grid-template-columns: 36px 1fr 1fr; gap: 4px; margin-bottom: 4px;">
-          <input type="text" class="say-avatar" value="${this.escape(say.avatar || '💬')}" title="头像 Emoji" style="text-align: center;" />
-          <input type="text" class="say-speaker" value="${this.escape(say.speaker)}" placeholder="说话人" />
-          <input type="text" class="say-title" value="${this.escape(say.speakerTitle || '')}" placeholder="身份头衔" />
+        <div style="display: grid; grid-template-columns: 42px 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+          <input type="text" class="say-avatar" value="${this.escape(say.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
+          <input type="text" class="say-speaker" value="${this.escape(say.speaker)}" placeholder="说话人姓名" />
+          <input type="text" class="say-title" value="${this.escape(say.speakerTitle || '')}" placeholder="身份/头衔 (可选)" />
         </div>
-        <textarea class="say-text inspector-textarea" style="height: 48px; margin-bottom: 4px;">${this.escape(say.text)}</textarea>
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <span style="font-size: 10px; color: #64748b;">确认按钮文案：</span>
-          <input type="text" class="say-btn" value="${this.escape(say.button || '继续')}" style="width: 100px; padding: 2px 6px; font-size: 11px;" />
+        <textarea class="say-text" placeholder="输入对话台词内容..." style="width: 100%; height: 56px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(say.text)}</textarea>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span style="font-size: 11px; color: #94a3b8; flex-shrink: 0;">确认按钮文案：</span>
+          <input type="text" class="say-btn" value="${this.escape(say.button || '继续')}" placeholder="确认/继续" style="flex: 1; max-width: 140px; padding: 4px 8px; font-size: 11px;" />
         </div>
       `;
     } else if (s.type === 'set') {
       const set = s as SetStep;
       innerForm = `
-        <div style="display: grid; grid-template-columns: 1fr 24px 1fr; gap: 4px; align-items: center;">
-          <select class="set-var" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; padding:3px; border-radius:4px; font-size:11px;">
+        <div style="display: grid; grid-template-columns: 1fr 20px 100px; gap: 6px; align-items: center; margin-bottom: 4px;">
+          <select class="set-var" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px;">
             ${p.vars
-              .map((v) => `<option value="${v.key}" ${v.key === set.var ? 'selected' : ''}>${v.icon} ${v.label} (${v.key})</option>`)
+              .map((v) => `<option value="${v.key}" ${v.key === set.var ? 'selected' : ''}>${v.icon} ${v.label}</option>`)
               .join('')}
           </select>
-          <span style="text-align: center; color: #38bdf8; font-weight: 700;">=</span>
-          <input type="text" class="set-val" value="${this.escape(set.from ? `from:${set.from}` : String(set.value ?? ''))}" placeholder="true / 数值 / 文本" style="padding: 3px; font-size: 11px;" />
+          <span style="text-align: center; color: #38bdf8; font-weight: 700; font-size: 13px;">=</span>
+          <input type="text" class="set-val" value="${this.escape(set.from ? `from:${set.from}` : String(set.value ?? ''))}" placeholder="true / 数值" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px; font-family: var(--font-mono);" />
         </div>
-        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">💡 若输入 from:hero.maxHp 则代表动态读取另一个变量的值</div>
+        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">💡 可直接填 true/数值，或 from:hero.maxHp 动态读取</div>
       `;
     } else if (s.type === 'add') {
       const add = s as AddStep;
       innerForm = `
-        <div style="display: grid; grid-template-columns: 1fr 24px 80px; gap: 4px; align-items: center;">
-          <select class="add-var" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; padding:3px; border-radius:4px; font-size:11px;">
+        <div style="display: grid; grid-template-columns: 1fr 20px 90px; gap: 6px; align-items: center; margin-bottom: 4px;">
+          <select class="add-var" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px;">
             ${p.vars
               .filter((v) => v.kind === 'number')
-              .map((v) => `<option value="${v.key}" ${v.key === add.var ? 'selected' : ''}>${v.icon} ${v.label} (${v.key})</option>`)
+              .map((v) => `<option value="${v.key}" ${v.key === add.var ? 'selected' : ''}>${v.icon} ${v.label}</option>`)
               .join('')}
           </select>
-          <span style="text-align: center; color: #10b981; font-weight: 700;">+=</span>
-          <input type="number" class="add-amount" value="${add.amount}" style="padding: 3px; font-size: 11px;" />
+          <span style="text-align: center; color: #10b981; font-weight: 700; font-size: 13px;">+=</span>
+          <input type="number" class="add-amount" value="${add.amount}" placeholder="数值" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px; font-family: var(--font-mono);" />
         </div>
       `;
     } else if (s.type === 'choice') {
       const ch = s as ChoiceStep;
       innerForm = `
-        <div style="display: grid; grid-template-columns: 36px 1fr; gap: 4px; margin-bottom: 4px;">
-          <input type="text" class="choice-avatar" value="${this.escape(ch.avatar || '💬')}" title="头像 Emoji" style="text-align: center;" />
-          <input type="text" class="choice-speaker" value="${this.escape(ch.speaker)}" placeholder="说话人" />
+        <div style="display: grid; grid-template-columns: 42px 1fr; gap: 6px; margin-bottom: 6px;">
+          <input type="text" class="choice-avatar" value="${this.escape(ch.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
+          <input type="text" class="choice-speaker" value="${this.escape(ch.speaker)}" placeholder="说话人姓名" />
         </div>
-        <textarea class="choice-text inspector-textarea" style="height: 38px; margin-bottom: 6px;">${this.escape(ch.text)}</textarea>
-        <div style="font-size: 10px; font-weight: 700; color: #a855f7; margin-bottom: 4px;">选项列表 (${ch.options.length})</div>
+        <textarea class="choice-text" placeholder="选项提示文案..." style="width: 100%; height: 44px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(ch.text)}</textarea>
+        <div style="font-size: 10px; font-weight: 700; color: #c4b5fd; margin-bottom: 4px;">选项列表 (${ch.options.length})</div>
         <div class="choice-options-list">
           ${ch.options
             .map(
               (opt, oIdx) => `
-            <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 4px; font-size: 11px;">
-              <span style="color: #64748b;">${oIdx + 1}.</span>
-              <input type="text" class="opt-text" data-oidx="${oIdx}" value="${this.escape(opt.text)}" style="flex: 1; padding: 2px 4px; font-size: 11px;" />
-              <select class="opt-style" data-oidx="${oIdx}" style="background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:10px; padding:2px;">
-                <option value="primary" ${opt.style === 'primary' ? 'selected' : ''}>主要</option>
-                <option value="secondary" ${opt.style === 'secondary' ? 'selected' : ''}>次要</option>
-                <option value="danger" ${opt.style === 'danger' ? 'selected' : ''}>危险/红色</option>
+            <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 11px;">
+              <span style="color: #64748b; font-weight: 700; flex-shrink: 0;">${oIdx + 1}.</span>
+              <input type="text" class="opt-text" data-oidx="${oIdx}" value="${this.escape(opt.text)}" placeholder="选项文案" style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 11px;" />
+              <select class="opt-style" data-oidx="${oIdx}" style="width: 75px; flex-shrink: 0; font-size: 10px; padding: 3px;">
+                <option value="primary" ${opt.style === 'primary' ? 'selected' : ''}>主要(蓝)</option>
+                <option value="secondary" ${opt.style === 'secondary' ? 'selected' : ''}>次要(灰)</option>
+                <option value="danger" ${opt.style === 'danger' ? 'selected' : ''}>危险(红)</option>
               </select>
             </div>
           `
@@ -658,9 +655,9 @@ export class NodeInspector {
     }
 
     card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-        <span style="font-size: 10px; font-weight: 700; color: #f59e0b;">${typeIcons[s.type] || s.type}</span>
-        <div style="display: flex; gap: 3px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 4px;">
+        <span style="font-size: 11px; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 4px;">${typeIcons[s.type] || s.type}</span>
+        <div style="display: flex; gap: 3px; flex-shrink: 0;">
           <button class="mini-btn btn-step-up" ${sIdx === 0 ? 'disabled' : ''}>↑</button>
           <button class="mini-btn btn-step-down" ${sIdx === b.steps.length - 1 ? 'disabled' : ''}>↓</button>
           <button class="mini-btn danger-btn btn-del-step">×</button>

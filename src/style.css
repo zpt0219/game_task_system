@@ -953,32 +953,168 @@ input:checked + .slider:before {
   padding: 8px 10px;
 }
 
-.inspector-input {
-  width: 100%;
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: #f8fafc;
-  padding: 7px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  outline: none;
-}
-
-.inspector-input:focus {
-  border-color: #3b82f6;
-}
-
+/* 现代化统一深色表单与控件 (学习自 64px-portrait-studio) */
+.inspector-scroll-container input[type="text"],
+.inspector-scroll-container input[type="number"],
+.inspector-scroll-container select,
+.inspector-scroll-container textarea,
+.dark-input,
+.inspector-input,
 .inspector-textarea {
-  width: 100%;
-  height: 70px;
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: #f8fafc;
-  padding: 7px 10px;
+  background: #0b0d17 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+  border-radius: 6px !important;
+  padding: 6px 8px !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.inspector-scroll-container input[type="text"]:focus,
+.inspector-scroll-container input[type="number"]:focus,
+.inspector-scroll-container select:focus,
+.inspector-scroll-container textarea:focus,
+.dark-input:focus,
+.inspector-input:focus,
+.inspector-textarea:focus {
+  border-color: #7c3aed !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.35) !important;
+  background: #141829 !important;
+}
+
+.inspector-scroll-container select {
+  cursor: pointer;
+}
+
+/* 按钮通用防断字换行与微调 */
+.mini-btn,
+.mini-btn-action,
+.btn-xs,
+.step-add-pill,
+.btn-del-branch,
+.btn-del-step,
+.btn-view-var {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+}
+
+.mini-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.mini-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.mini-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mini-btn-action {
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  color: #c4b5fd;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-btn-action:hover {
+  background: #7c3aed;
+  border-color: #8b5cf6;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
+}
+
+.danger-btn {
+  color: #f87171 !important;
+}
+
+.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  color: #fca5a5 !important;
+}
+
+/* 步骤添加工具栏网格 (4列等宽，绝不折断成单字) */
+.step-add-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.step-add-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  color: var(--text-sub);
   border-radius: 6px;
-  font-size: 12px;
-  outline: none;
-  resize: vertical;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.step-add-pill:hover {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: #7c3aed;
+  border-style: solid;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.3);
+}
+
+/* 卡片层级背景 */
+.branch-card {
+  background: #111422 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  margin-bottom: 10px !important;
+}
+
+.branch-card.active-branch {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2) !important;
+}
+
+.step-card {
+  background: #0b0d17 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 6px !important;
+  padding: 10px !important;
+  margin-top: 8px !important;
 }
 
 /* ==========================================================================
