@@ -1,82 +1,144 @@
-export type AchievementStatus = 'active' | 'failed' | 'success';
+// ============================================================================
+// 数据模型：两大节点（Event / Trigger）+ 状态变量（Var）
+// 所有内容均为纯 JSON 数据，存储在 data/castle.json，可在编辑器中增删改。
+// ============================================================================
 
-export interface HeroAttributes {
-  hp: number;
-  maxHp: number;
-  attack: number;
-  defence: number;
-  gold: number;
-}
+export type VarValue = boolean | number | string;
 
-export interface PartyState {
-  princess: boolean;
-}
+/** 状态变量分类：决定左侧栏分组展示 */
+export type VarCategory = 'stat' | 'party' | 'item' | 'teleport' | 'achievement' | 'flag';
 
-export interface ItemsState {
-  book: boolean;
-  map: boolean;
-  hp_gem: boolean;
-}
+export type VarKind = 'bool' | 'number' | 'enum';
 
-export interface TeleportsState {
-  castle: boolean;
-}
-
-export interface AchievementsState {
-  no_use_princess: AchievementStatus;
-  no_use_bed: AchievementStatus;
-  no_use_money: AchievementStatus;
-}
-
-export interface RegionsState {
-  castle_exited: boolean;
-}
-
-export interface WorldState {
-  hero: HeroAttributes;
-  party: PartyState;
-  items: ItemsState;
-  teleports: TeleportsState;
-  achievements: AchievementsState;
-  regions: RegionsState;
-}
-
-export type ConditionSubType = 'item' | 'character' | 'map' | 'achievement';
-export type EventSubType = 'dialog' | 'interaction' | 'gate' | 'service' | 'info';
-export type RegionSubType = 'region';
-
-export interface ConditionNode {
-  id: string;
-  type: 'condition';
-  subType: ConditionSubType;
+/** 状态变量：道具 / 同伴 / 传送点 / 成就 / 数值 / 标记 */
+export interface VarDef {
+  key: string; // 例：items.book
+  label: string; // 例：冒险书
   icon: string;
+  category: VarCategory;
+  kind: VarKind;
+  initial: VarValue;
+  options?: string[]; // kind === 'enum' 时的可选值
+  desc?: string;
+}
+
+export type CompareOp = '==' | '!=' | '>' | '>=' | '<' | '<=';
+
+/** 单条比较条件：变量 op 值 */
+export interface CmpCond {
+  var: string;
+  op: CompareOp;
+  value: VarValue;
+}
+
+/** Trigger 节点：只做判断，用来改变 Event 的行为 */
+export interface TriggerDef {
+  id: string;
   title: string;
-  desc: string;
+  desc?: string;
   x: number;
   y: number;
-  stateKey: string;
-  showOnMainGraph?: boolean;
-  evaluate: (state: WorldState) => boolean;
-  toggle: (state: WorldState) => void;
+  match: 'all' | 'any';
+  conds: CmpCond[];
 }
 
-export interface ActionCell {
-  type: string;
-  text?: string;
-  action?: string;
-  speaker?: string;
+export type ButtonStyle = 'primary' | 'secondary' | 'danger';
+
+/** 台词 */
+export interface SayStep {
+  type: 'say';
+  speaker: string;
   speakerTitle?: string;
-  condition?: string;
-  stat?: string;
-  cost10?: string;
-  cost100?: string;
-  [key: string]: unknown;
+  avatar?: string;
+  text: string;
+  button?: string;
 }
+
+export interface ChoiceOption {
+  text: string;
+  style?: ButtonStyle;
+  require?: CmpCond[]; // 不满足时按钮置灰（如金币不足）
+  steps: Step[];
+}
+
+/** 选项 */
+export interface ChoiceStep {
+  type: 'choice';
+  speaker: string;
+  speakerTitle?: string;
+  avatar?: string;
+  text: string;
+  options: ChoiceOption[];
+}
+
+/** 设置变量（状态改变发生在这里）。from 存在时表示复制另一个变量的值 */
+export interface SetStep {
+  type: 'set';
+  var: string;
+  value?: VarValue;
+  from?: string;
+}
+
+/** 增减数值 */
+export interface AddStep {
+  type: 'add';
+  var: string;
+  amount: number;
+}
+
+export type Step = SayStep | ChoiceStep | SetStep | AddStep;
+export type StepType = Step['type'];
+
+/** 分支：when 中所有 Trigger 都满足时匹配；when 为空表示默认行为 */
+export interface Branch {
+  id: string;
+  title: string;
+  when: string[];
+  steps: Step[];
+}
+
+/** Event 节点：玩家可触发；从上到下匹配第一个满足的分支 */
+export interface EventDef {
+  id: string;
+  title: string;
+  desc?: string;
+  sourceRef?: string;
+  x: number;
+  y: number;
+  branches: Branch[];
+}
+
+export interface PresetDef {
+  id: string;
+  name: string;
+  values: Record<string, VarValue>; // 覆盖变量初始值
+}
+
+export interface ProjectData {
+  version: number;
+  name: string;
+  vars: VarDef[];
+  triggers: TriggerDef[];
+  events: EventDef[];
+  presets: PresetDef[];
+}
+
+/** 运行时世界状态：变量 key -> 当前值 */
+export type WorldState = Record<string, VarValue>;
+
+export type NodeKind = 'event' | 'trigger';
+
+/** 当前选中项 */
+export type Selection =
+  | { kind: 'event'; id: string }
+  | { kind: 'trigger'; id: string }
+  | { kind: 'var'; id: string }
+  | null;
 
 export interface DialogOption {
   text: string;
   className?: string;
-  cost?: number;
+  disabled?: boolean;
   onClick?: () => void;
 }
 
@@ -88,60 +150,6 @@ export interface DialogConfig {
   confirmText?: string;
   onConfirm?: () => void;
   options?: DialogOption[];
-}
-
-export type ShowDialogFn = (config: DialogConfig) => void;
-export type LogFn = (message: string, isHighlight?: boolean) => void;
-
-export interface EventNode {
-  id: string;
-  type: 'event';
-  subType: EventSubType;
-  title: string;
-  sourceRef: string;
-  x: number;
-  y: number;
-  desc: string;
-  isAvailable: (state: WorldState) => boolean;
-  statusLabel: (state: WorldState) => string;
-  cells: ActionCell[];
-  execute: (state: WorldState, showDialog: ShowDialogFn, log: LogFn) => void;
-}
-
-export interface RegionNode {
-  id: string;
-  type: 'region';
-  subType: RegionSubType;
-  icon: string;
-  title: string;
-  desc: string;
-  x: number;
-  y: number;
-  isAvailable: (state: WorldState) => boolean;
-  statusLabel: (state: WorldState) => string;
-  execute: (state: WorldState, showDialog: ShowDialogFn, log: LogFn) => void;
-}
-
-export type AnyGraphNode = ConditionNode | EventNode | RegionNode;
-
-export type EdgeType = 'precondition' | 'effect' | 'soft_gate';
-
-export interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-  type: EdgeType;
-  label: string;
-  isInverted?: boolean;
-  gateIndex?: number;
-  showOnMainGraph?: boolean;
-  checkActive: (state: WorldState) => boolean;
-}
-
-export interface PresetState {
-  id: string;
-  name: string;
-  state: WorldState;
 }
 
 export type EditorMode = 'play' | 'edit';

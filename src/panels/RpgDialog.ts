@@ -24,7 +24,7 @@ export class RpgDialog {
     };
   }
 
-  public show(config: DialogConfig, onFinished?: () => void): void {
+  public show(config: DialogConfig): void {
     this.avatarEl.textContent = config.avatar || '💬';
     this.nameEl.textContent = config.speaker || '神秘人物';
     this.titleEl.textContent = config.speakerTitle || '事件交互';
@@ -37,10 +37,11 @@ export class RpgDialog {
         const btn = document.createElement('button');
         btn.className = `dialog-btn ${opt.className || 'primary-btn'}`;
         btn.textContent = opt.text;
+        btn.disabled = !!opt.disabled;
         btn.onclick = () => {
+          if (opt.disabled) return;
           this.close();
           if (opt.onClick) opt.onClick();
-          if (onFinished) onFinished();
         };
         this.footerEl.appendChild(btn);
       });
@@ -51,7 +52,6 @@ export class RpgDialog {
       btn.onclick = () => {
         this.close();
         if (config.onConfirm) config.onConfirm();
-        if (onFinished) onFinished();
       };
       this.footerEl.appendChild(btn);
     }

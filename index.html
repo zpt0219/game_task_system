@@ -22,11 +22,24 @@
         <span>🎮</span> Play 模式 (交互试玩)
       </button>
       <button id="modeEditBtn" class="mode-btn">
-        <span>🛠</span> 普通模式 (节点检视/编辑)
+        <span>🛠</span> 编辑模式 (增删改节点)
       </button>
     </div>
 
     <div class="header-actions">
+      <!-- 撤销 / 重做 -->
+      <button id="btnUndo" class="btn-icon" title="撤销 (Ctrl+Z)"><span>↺</span></button>
+      <button id="btnRedo" class="btn-icon" title="重做 (Ctrl+Y)"><span>↻</span></button>
+
+      <!-- 快捷添加节点 -->
+      <button id="btnAddEventHeader" class="btn-icon" title="在画布中心新建 Event 对话/事件节点">
+        <span>+💬</span> Event
+      </button>
+      <button id="btnAddTriggerHeader" class="btn-icon" title="在画布中心新建 Trigger 条件判断器">
+        <span>+⚡</span> Trigger
+      </button>
+
+      <!-- 预设与状态控制 -->
       <select id="presetSelect" class="preset-select" title="快速切换测试预设"></select>
       <button id="btnResetLayout" class="btn-icon" title="将所有节点恢复为默认无重叠排布">
         <span>📐</span> 恢复默认布局
@@ -34,6 +47,9 @@
       <button id="btnResetState" class="btn-icon" title="重置为初始状态">
         <span>🔄</span> 重置初始态
       </button>
+
+      <!-- 自动保存状态指示灯 -->
+      <span id="saveStatusBadge" class="save-status-badge saved" title="自动同步至 data/castle.json">● 已保存</span>
     </div>
   </header>
 

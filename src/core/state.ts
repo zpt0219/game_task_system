@@ -1,140 +1,104 @@
-import { WorldState, EditorMode, AnyGraphNode } from './types';
-import { INITIAL_WORLD_STATE } from './castleData';
+import { WorldState, EditorMode, Selection, VarValue, ProjectData } from './types';
 
 export type StateListener = (state: WorldState) => void;
 export type ModeListener = (mode: EditorMode) => void;
-export type SelectedNodeListener = (node: AnyGraphNode | null) => void;
-export type FocalEntityListener = (entityId: string | null) => void;
+export type SelectionListener = (sel: Selection) => void;
+export type FocalListener = (varKey: string | null) => void;
 export type LogListener = (message: string, isHighlight: boolean) => void;
-export type ResetListener = () => void;
 
-class StateManager {
-  private state: WorldState;
+/** 根据项目变量定义生成初始世界状态，可叠加预设覆盖值 */
+export function buildInitialState(p: ProjectData, overrides: Record<string, VarValue> = {}): WorldState {
+  const s: WorldState = {};
+  p.vars.forEach((v) => (s[v.key] = v.initial));
+  Object.assign(s, overrides);
+  return s;
+}
+
+/** 运行时状态：世界变量、模式、选中项、专属图焦点 */
+class AppState {
+  private state: WorldState = {};
   private mode: EditorMode = 'play';
-  private selectedNode: AnyGraphNode | null = null;
-  private focalEntityId: string | null = null;
+  private selection: Selection = null;
+  private focalVar: string | null = null;
 
-  private stateListeners: Set<StateListener> = new Set();
-  private modeListeners: Set<ModeListener> = new Set();
-  private selectedNodeListeners: Set<SelectedNodeListener> = new Set();
-  private focalEntityListeners: Set<FocalEntityListener> = new Set();
-  private logListeners: Set<LogListener> = new Set();
-  private resetListeners: Set<ResetListener> = new Set();
-
-  constructor() {
-    this.state = JSON.parse(JSON.stringify(INITIAL_WORLD_STATE));
-  }
+  private stateListeners = new Set<StateListener>();
+  private modeListeners = new Set<ModeListener>();
+  private selectionListeners = new Set<SelectionListener>();
+  private focalListeners = new Set<FocalListener>();
+  private logListeners = new Set<LogListener>();
 
   public getState(): WorldState {
     return this.state;
+  }
+
+  public setState(s: WorldState): void {
+    this.state = s;
+    this.stateListeners.forEach((fn) => fn(this.state));
+  }
+
+  public mutate(fn: (draft: WorldState) => void): void {
+    fn(this.state);
+    this.stateListeners.forEach((l) => l(this.state));
   }
 
   public getMode(): EditorMode {
     return this.mode;
   }
 
-  public getSelectedNode(): AnyGraphNode | null {
-    return this.selectedNode;
-  }
-
-  public getFocalEntityId(): string | null {
-    return this.focalEntityId;
-  }
-
-  public setFocalEntity(entityId: string | null): void {
-    if (this.focalEntityId === entityId) return;
-    this.focalEntityId = entityId;
-    this.notifyFocalEntity();
-  }
-
   public setMode(mode: EditorMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
-    this.notifyMode();
-    this.log(
-      mode === 'play'
-        ? '🎮 切换为 [Play 模式]：点击事件节点可触发剧情对话与状态模拟'
-        : '🛠 切换为 [普通编辑模式]：点击任意节点可检视与编辑结构/台词'
-    );
+    this.modeListeners.forEach((fn) => fn(mode));
+    this.log(mode === 'play' ? '🎮 切换为 [Play 模式]：点击 Event 节点触发剧情' : '🛠 切换为 [编辑模式]：可增删改节点', true);
   }
 
-  public setSelectedNode(node: AnyGraphNode | null): void {
-    this.selectedNode = node;
-    this.notifySelectedNode();
+  public getSelection(): Selection {
+    return this.selection;
   }
 
-  public mutate(fn: (draft: WorldState) => void): void {
-    fn(this.state);
-    this.notifyState();
+  public select(sel: Selection): void {
+    this.selection = sel;
+    this.selectionListeners.forEach((fn) => fn(sel));
   }
 
-  public reset(): void {
-    this.state = JSON.parse(JSON.stringify(INITIAL_WORLD_STATE));
-    this.focalEntityId = null;
-    this.notifyFocalEntity();
-    this.notifyState();
-    this.resetListeners.forEach((fn) => fn());
-    this.log('🔄 已重置所有世界与主角状态为初始状态！', true);
+  public getFocalVar(): string | null {
+    return this.focalVar;
   }
 
-  public loadPreset(presetState: WorldState, presetName: string): void {
-    this.state = JSON.parse(JSON.stringify(presetState));
-    this.focalEntityId = null;
-    this.notifyFocalEntity();
-    this.notifyState();
-    this.resetListeners.forEach((fn) => fn());
-    this.log(`⚡ 加载预设快照：[${presetName}]`, true);
+  public setFocalVar(key: string | null): void {
+    if (this.focalVar === key) return;
+    this.focalVar = key;
+    this.focalListeners.forEach((fn) => fn(key));
   }
 
   public log(message: string, isHighlight = false): void {
     this.logListeners.forEach((fn) => fn(message, isHighlight));
   }
 
-  public onReset(listener: ResetListener): () => void {
-    this.resetListeners.add(listener);
-    return () => this.resetListeners.delete(listener);
+  public onStateChange(fn: StateListener): () => void {
+    this.stateListeners.add(fn);
+    return () => this.stateListeners.delete(fn);
   }
 
-  public onStateChange(listener: StateListener): () => void {
-    this.stateListeners.add(listener);
-    return () => this.stateListeners.delete(listener);
+  public onModeChange(fn: ModeListener): () => void {
+    this.modeListeners.add(fn);
+    return () => this.modeListeners.delete(fn);
   }
 
-  public onModeChange(listener: ModeListener): () => void {
-    this.modeListeners.add(listener);
-    return () => this.modeListeners.delete(listener);
+  public onSelectionChange(fn: SelectionListener): () => void {
+    this.selectionListeners.add(fn);
+    return () => this.selectionListeners.delete(fn);
   }
 
-  public onSelectedNodeChange(listener: SelectedNodeListener): () => void {
-    this.selectedNodeListeners.add(listener);
-    return () => this.selectedNodeListeners.delete(listener);
+  public onFocalChange(fn: FocalListener): () => void {
+    this.focalListeners.add(fn);
+    return () => this.focalListeners.delete(fn);
   }
 
-  public onFocalEntityChange(listener: FocalEntityListener): () => void {
-    this.focalEntityListeners.add(listener);
-    return () => this.focalEntityListeners.delete(listener);
-  }
-
-  public onLog(listener: LogListener): () => void {
-    this.logListeners.add(listener);
-    return () => this.logListeners.delete(listener);
-  }
-
-  private notifyState(): void {
-    this.stateListeners.forEach((fn) => fn(this.state));
-  }
-
-  private notifyMode(): void {
-    this.modeListeners.forEach((fn) => fn(this.mode));
-  }
-
-  private notifySelectedNode(): void {
-    this.selectedNodeListeners.forEach((fn) => fn(this.selectedNode));
-  }
-
-  private notifyFocalEntity(): void {
-    this.focalEntityListeners.forEach((fn) => fn(this.focalEntityId));
+  public onLog(fn: LogListener): () => void {
+    this.logListeners.add(fn);
+    return () => this.logListeners.delete(fn);
   }
 }
 
-export const appState = new StateManager();
+export const appState = new AppState();
