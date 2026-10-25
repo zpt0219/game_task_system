@@ -166,7 +166,7 @@
     {
       "id": "trig_princess_in_party",
       "title": "⚡ trigger: 公主在队伍",
-      "desc": "改变公主的床、大钟柜、国王与公主对话的行为。",
+      "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
       "x": 460,
       "y": 380,
       "match": "all",
@@ -434,23 +434,6 @@
       "x": 60,
       "y": 380,
       "branches": [
-        {
-          "id": "b_princess_in_party",
-          "title": "已在队中",
-          "when": [
-            "trig_princess_in_party"
-          ],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "队伍同伴",
-              "avatar": "👸",
-              "text": "勇者大人，我已经随您在队伍中了呀！如果需要我离队，可以去王座前请示父王~",
-              "button": "知道了"
-            }
-          ]
-        },
         {
           "id": "b_princess_invite",
           "title": "邀请入队",
