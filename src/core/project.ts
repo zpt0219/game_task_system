@@ -58,9 +58,23 @@ class ProjectStore {
   // ------------------------------------------------------------------ 加载 / 保存
 
   public async load(): Promise<void> {
-    const res = await fetch(API_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`读取 data/castle.json 失败：HTTP ${res.status}`);
-    this.data = (await res.json()) as ProjectData;
+    let res: Response | null = null;
+    try {
+      res = await fetch(API_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.data = (await res.json()) as ProjectData;
+    } catch (err) {
+      // 降级尝试加载相对静态资源 data/castle.json (用于生产静态托管环境)
+      try {
+        const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') + '/';
+        const staticUrl = `${base}data/castle.json`;
+        res = await fetch(staticUrl, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`静态数据读取失败：HTTP ${res.status}`);
+        this.data = (await res.json()) as ProjectData;
+      } catch (fallbackErr) {
+        throw new Error(`读取 project 数据失败：API 失败 (${err}), 静态降级失败 (${fallbackErr})`);
+      }
+    }
     this.undoStack = [];
     this.redoStack = [];
     this.lastCoalesceKey = null;
@@ -91,7 +105,7 @@ class ProjectStore {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.setSaveStatus('saved');
     } catch (err) {
-      this.setSaveStatus('error', String(err));
+      this.setSaveStatus('dirty', '静态演示模式：修改保存在当前浏览器内存中');
     } finally {
       this.saving = false;
       if (this.pendingSave) {

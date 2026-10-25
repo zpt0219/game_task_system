@@ -56,7 +56,19 @@ function projectDataPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [projectDataPlugin()],
+  base: '/game_task_system/',
+  plugins: [
+    projectDataPlugin(),
+    {
+      name: 'copy-data-plugin',
+      closeBundle() {
+        const src = path.resolve(process.cwd(), 'data', 'castle.json');
+        const destDir = path.resolve(process.cwd(), 'dist', 'data');
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(src, path.resolve(destDir, 'castle.json'));
+      }
+    }
+  ],
   server: {
     port: 8088,
     host: '0.0.0.0',
