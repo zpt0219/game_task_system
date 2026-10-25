@@ -42,6 +42,8 @@ export class GraphCanvas {
   private focalPositions: Record<string, LayoutPos> = {};
 
   private contextMenuEl: HTMLElement | null = null;
+  private connectingTrigId: string | null = null;
+  private connectingBannerEl: HTMLElement | null = null;
 
   constructor(private dialog: RpgDialog) {
     this.viewport = document.getElementById('graphViewport') as HTMLElement;
@@ -59,6 +61,17 @@ export class GraphCanvas {
     this.bindViewportEvents();
     this.bindFocalBannerEvents();
     this.bindContextMenu();
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.connectingTrigId) {
+        this.cancelConnecting();
+      }
+    });
+    this.viewport.addEventListener('click', () => {
+      if (this.connectingTrigId) {
+        this.cancelConnecting();
+      }
+    });
 
     project.onChange((source) => this.handleProjectChange(source));
     appState.onStateChange((state) => this.renderState(state));
@@ -139,7 +152,12 @@ export class GraphCanvas {
       el.innerHTML = `
         <div class="cond-status-led"></div>
         <div class="node-title">${this.escape(trig.title)}</div>
+        <div class="node-port port-out" data-tid="${trig.id}" title="点击此端点，再点击 Event 可建立连入关系"></div>
       `;
+      el.querySelector('.port-out')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startConnecting(trig.id);
+      });
       this.attachNodeInteraction(el, 'trigger', trig.id);
       this.nodesContainer.appendChild(el);
     });
@@ -154,10 +172,17 @@ export class GraphCanvas {
       el.style.left = `${ev.x}px`;
       el.style.top = `${ev.y}px`;
       el.innerHTML = `
+        <div class="node-port port-in" data-eid="${ev.id}" title="Trigger 连入端点"></div>
         <div class="event-status-dot status-dot"></div>
         <div class="node-title">${this.escape(ev.title)}</div>
         <span class="event-status-pill status-pill"></span>
       `;
+      el.querySelector('.port-in')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.connectingTrigId) {
+          this.completeConnecting(ev.id);
+        }
+      });
       this.attachNodeInteraction(el, 'event', ev.id);
       this.nodesContainer.appendChild(el);
     });
@@ -324,6 +349,11 @@ export class GraphCanvas {
       e.stopPropagation();
       if (hasMoved) return;
 
+      if (this.connectingTrigId && kind === 'event') {
+        this.completeConnecting(id);
+        return;
+      }
+
       appState.select({ kind, id });
 
       // Play 模式下，点击 Event 直接触发执行
@@ -354,6 +384,53 @@ export class GraphCanvas {
       },
       ev
     );
+  }
+
+  // ------------------------------------------------------------------ 连线交互
+  private startConnecting(trigId: string): void {
+    this.connectingTrigId = trigId;
+    const trig = project.getTrigger(trigId);
+    const title = trig ? trig.title.replace('⚡ trigger: ', '') : trigId;
+    if (!this.connectingBannerEl) {
+      this.connectingBannerEl = document.createElement('div');
+      this.connectingBannerEl.className = 'connecting-banner';
+      this.viewport.appendChild(this.connectingBannerEl);
+    }
+    this.connectingBannerEl.innerHTML = `
+      <span>🔗 正在连线：<b>${this.escape(title)}</b> ➔ 请点击目标 Event 节点完成连入</span>
+      <button id="btnCancelConnect" style="background:#334155; border:none; color:#f8fafc; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">取消 (ESC)</button>
+    `;
+    this.connectingBannerEl.style.display = 'flex';
+    this.connectingBannerEl.querySelector('#btnCancelConnect')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cancelConnecting();
+    });
+  }
+
+  private cancelConnecting(): void {
+    this.connectingTrigId = null;
+    if (this.connectingBannerEl) {
+      this.connectingBannerEl.style.display = 'none';
+    }
+  }
+
+  private completeConnecting(evId: string): void {
+    const chosenTrigId = this.connectingTrigId;
+    this.cancelConnecting();
+    if (!chosenTrigId) return;
+
+    project.change((d) => {
+      const targetEv = d.events.find((x) => x.id === evId);
+      if (targetEv) {
+        if (!targetEv.incomingTriggers) {
+          targetEv.incomingTriggers = Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
+        }
+        if (!targetEv.incomingTriggers.includes(chosenTrigId)) {
+          targetEv.incomingTriggers.push(chosenTrigId);
+        }
+      }
+    }, 'structure');
+    appState.log(`已建立连入关系：${chosenTrigId} ➔ ${evId}`, true);
   }
 
   private getNodePos(id: string): LayoutPos {
@@ -527,7 +604,23 @@ export class GraphCanvas {
         d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`,
         active: trigActive,
         highlight: !!isSelected,
-        title: `${trig.title} ➔ 改变行为：${ev.title}`
+        title: `${trig.title} ➔ 改变行为：${ev.title} (点击可断开连线)`,
+        onClick: (e) => {
+          e.stopPropagation();
+          if (confirm(`是否断开 Trigger 连入关系：\n\n${trig.title} ➔ ${ev.title}？`)) {
+            project.change((d) => {
+              const targetEv = d.events.find((x) => x.id === edge.to);
+              if (targetEv) {
+                const incoming =
+                  targetEv.incomingTriggers ?? Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
+                targetEv.incomingTriggers = incoming.filter((t) => t !== edge.from);
+                targetEv.branches.forEach((b) => {
+                  b.when = b.when.filter((w) => w !== edge.from);
+                });
+              }
+            }, 'structure');
+          }
+        }
       });
     });
   }
@@ -618,6 +711,7 @@ export class GraphCanvas {
     highlight: boolean;
     effect?: boolean;
     title: string;
+    onClick?: (e: MouseEvent) => void;
   }): void {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', opts.d);
@@ -630,6 +724,11 @@ export class GraphCanvas {
 
     const marker = opts.highlight ? 'arrow-focal' : opts.active ? (opts.effect ? 'arrow-effect' : 'arrow-active') : 'arrow-inactive';
     path.setAttribute('marker-end', `url(#${marker})`);
+
+    if (opts.onClick) {
+      path.style.cursor = 'pointer';
+      path.onclick = opts.onClick;
+    }
 
     const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     titleEl.textContent = opts.title;

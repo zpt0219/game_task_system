@@ -1273,4 +1273,58 @@ input:checked + .slider:before {
   border-color: #10b981 !important;
 }
 
+/* ==========================================================================
+   连线端点与连线交互 (Port & Edge Connecting)
+   ========================================================================== */
+.node-port {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 2px solid #38bdf8;
+  cursor: crosshair;
+  z-index: 25;
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.node-port:hover, .node-port.port-active {
+  transform: translateY(-50%) scale(1.35);
+  background: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+}
+.port-out {
+  right: -7px;
+}
+.port-in {
+  left: -7px;
+  border-color: #10b981;
+}
+.port-in:hover {
+  background: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+}
+
+.connecting-banner {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #38bdf8;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(56, 189, 248, 0.4);
+  color: #e0f2fe;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 30px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+
 

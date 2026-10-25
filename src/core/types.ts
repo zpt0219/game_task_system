@@ -105,6 +105,7 @@ export interface EventDef {
   sourceRef?: string;
   x: number;
   y: number;
+  incomingTriggers?: string[]; // 连入此 Event 的 Trigger ID 列表 (输入信号)
   branches: Branch[];
 }
 

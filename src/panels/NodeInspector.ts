@@ -178,7 +178,83 @@ export class NodeInspector {
       );
     });
 
-    // 3. ActionSequence 分支列表
+    // 3. 连入的 Trigger 管理 (输入信号)
+    const incomingTrigIds = ev.incomingTriggers ?? Array.from(new Set(ev.branches.flatMap((b) => b.when)));
+    const trigCard = document.createElement('div');
+    trigCard.className = 'inspector-section';
+    trigCard.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="inspector-label" style="margin-bottom: 0;">
+          ⚡ 连入的 Trigger (输入信号：${incomingTrigIds.length})
+        </div>
+        <button id="btnConnectTrig" class="mini-btn-action" style="padding: 2px 8px; font-size: 11px;">
+          + 连入 Trigger
+        </button>
+      </div>
+      <div id="incomingTrigsContainer" style="display: flex; flex-wrap: wrap; gap: 6px;">
+        ${
+          incomingTrigIds.length === 0
+            ? '<div style="font-size: 11px; color: #64748b; padding: 2px 0;">💡 暂无连入 Trigger (此 Event 仅执行默认行为)</div>'
+            : incomingTrigIds
+                .map((tid) => {
+                  const trig = p.triggers.find((t) => t.id === tid);
+                  const title = trig ? trig.title.replace('⚡ trigger: ', '') : tid;
+                  return `
+              <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px; padding: 2px 6px;">
+                <span>⚡ ${this.escape(title)}</span>
+                <button class="btn-disconnect-trig" data-tid="${tid}" style="background: none; border: none; color: #f87171; cursor: pointer; font-size: 13px; font-weight: bold; padding: 0 2px; line-height: 1;" title="断开连线">×</button>
+              </span>
+            `;
+                })
+                .join('')
+        }
+      </div>
+    `;
+    this.container.appendChild(trigCard);
+
+    // 绑定连入 Trigger
+    trigCard.querySelector('#btnConnectTrig')?.addEventListener('click', () => {
+      const available = p.triggers.filter((t) => !incomingTrigIds.includes(t.id));
+      if (available.length === 0) {
+        alert('项目中暂无更多可连入的 Trigger！');
+        return;
+      }
+      const names = available.map((t, idx) => `${idx + 1}. ${t.title.replace('⚡ trigger: ', '')}`).join('\n');
+      const input = prompt(`请选择要连入此 Event 的 Trigger (输入序号 1~${available.length})：\n\n${names}`);
+      if (!input) return;
+      const idx = parseInt(input.trim(), 10) - 1;
+      if (idx >= 0 && idx < available.length) {
+        const chosen = available[idx];
+        project.change((d) => {
+          const targetEv = d.events.find((x) => x.id === ev.id);
+          if (targetEv) {
+            if (!targetEv.incomingTriggers) targetEv.incomingTriggers = [...incomingTrigIds];
+            if (!targetEv.incomingTriggers.includes(chosen.id)) {
+              targetEv.incomingTriggers.push(chosen.id);
+            }
+          }
+        }, 'structure');
+      }
+    });
+
+    // 绑定断开 Trigger
+    trigCard.querySelectorAll('.btn-disconnect-trig').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tid = (btn as HTMLElement).dataset.tid;
+        if (!tid) return;
+        project.change((d) => {
+          const targetEv = d.events.find((x) => x.id === ev.id);
+          if (targetEv) {
+            targetEv.incomingTriggers = (targetEv.incomingTriggers ?? incomingTrigIds).filter((t) => t !== tid);
+            targetEv.branches.forEach((b) => {
+              b.when = b.when.filter((w) => w !== tid);
+            });
+          }
+        }, 'structure');
+      });
+    });
+
+    // 4. ActionSequence 分支列表
     const branchesCard = document.createElement('div');
     branchesCard.className = 'inspector-section';
     branchesCard.innerHTML = `
@@ -186,23 +262,42 @@ export class NodeInspector {
         <div class="inspector-label" style="margin-bottom: 0;">
           ActionSequence 分支 (${ev.branches.length} 项，自上而下匹配)
         </div>
-        <button id="btnAddBranch" class="mini-btn-action" style="padding: 2px 8px; font-size: 11px;">
-          + 添加分支
-        </button>
+        <div style="display: flex; gap: 4px;">
+          ${
+            incomingTrigIds.length > 0
+              ? `<button id="btnAddCondBranch" class="mini-btn-action" style="padding: 2px 8px; font-size: 11px;">+ 条件行为</button>`
+              : ''
+          }
+          <button id="btnAddDefaultBranch" class="mini-btn" style="padding: 2px 8px; font-size: 11px;">+ 默认行为</button>
+        </div>
       </div>
       <div id="branchesContainer"></div>
     `;
     this.container.appendChild(branchesCard);
 
-    branchesCard.querySelector('#btnAddBranch')?.addEventListener('click', () => {
+    branchesCard.querySelector('#btnAddCondBranch')?.addEventListener('click', () => {
       project.change((d) => {
         const targetEv = d.events.find((x) => x.id === ev.id);
         if (targetEv) {
           targetEv.branches.unshift({
             id: uid('b'),
-            title: `新分支 ${targetEv.branches.length + 1}`,
+            title: `条件行为 ${targetEv.branches.length + 1}`,
+            when: incomingTrigIds.length > 0 ? [incomingTrigIds[0]] : [],
+            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写条件触发台词...', button: '继续' }]
+          });
+        }
+      }, 'structure');
+    });
+
+    branchesCard.querySelector('#btnAddDefaultBranch')?.addEventListener('click', () => {
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        if (targetEv) {
+          targetEv.branches.push({
+            id: uid('b'),
+            title: `默认行为`,
             when: [],
-            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写台词...', button: '继续' }]
+            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写默认台词...', button: '继续' }]
           });
         }
       }, 'structure');
@@ -210,7 +305,7 @@ export class NodeInspector {
 
     const bContainer = branchesCard.querySelector('#branchesContainer') as HTMLElement;
     ev.branches.forEach((b, bIdx) => {
-      const bEl = this.renderBranchCard(ev, b, bIdx, activeBranch?.id === b.id);
+      const bEl = this.renderBranchCard(ev, b, bIdx, activeBranch?.id === b.id, incomingTrigIds);
       bContainer.appendChild(bEl);
     });
 
@@ -246,8 +341,15 @@ export class NodeInspector {
     });
   }
 
-  private renderBranchCard(ev: EventDef, b: Branch, bIdx: number, isActive: boolean): HTMLElement {
+  private renderBranchCard(
+    ev: EventDef,
+    b: Branch,
+    bIdx: number,
+    isActive: boolean,
+    incomingTrigIds: string[]
+  ): HTMLElement {
     const p = project.get();
+    const isDefaultBranch = b.when.length === 0;
     const card = document.createElement('div');
     card.className = `branch-card ${isActive ? 'active-branch' : ''}`;
     card.style.cssText = `
@@ -272,30 +374,52 @@ export class NodeInspector {
         </div>
       </div>
 
-      <!-- Trigger 触发条件选择 -->
-      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
-        <div style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase; margin-bottom: 4px;">
-          ⚡ 触发条件 (勾选需满足的 Trigger)
-        </div>
-        <div class="branch-triggers-wrap" style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <!-- 触发条件 / 默认行为展示 -->
+      ${
+        isDefaultBranch
+          ? `
+        <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span>🛡️</span>
+            <span><b>默认行为</b> (当未连入 Trigger 或上方条件均不满足时执行)</span>
+          </div>
           ${
-            p.triggers.length === 0
-              ? '<span style="font-size: 10px; color: #64748b;">暂无 Trigger 可选</span>'
-              : p.triggers
-                  .map((t) => {
-                    const checked = b.when.includes(t.id);
-                    return `
-                <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: ${checked ? '#1e293b' : 'transparent'}; border: 1px solid ${checked ? '#38bdf8' : '#334155'}; border-radius: 4px; padding: 2px 6px; cursor: pointer; color: ${checked ? '#38bdf8' : '#94a3b8'};">
-                  <input type="checkbox" class="chk-trigger" data-tid="${t.id}" ${checked ? 'checked' : ''} style="margin: 0; cursor: pointer;" />
-                  <span>${this.escape(t.title.replace('⚡ trigger: ', ''))}</span>
-                </label>
-              `;
-                  })
-                  .join('')
+            incomingTrigIds.length > 0
+              ? `<button class="mini-btn btn-turn-into-cond" style="font-size: 10px; padding: 1px 6px;">转为条件行为</button>`
+              : ''
           }
         </div>
-        ${b.when.length === 0 ? '<div style="font-size: 10px; color: #10b981; margin-top: 4px;">✓ 默认分支 (当上方条件均不满足时执行)</div>' : ''}
-      </div>
+      `
+          : `
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">
+              ⚡ 触发条件 (需满足勾选的连入 Trigger，全部满足时触发)
+            </div>
+            <button class="mini-btn btn-turn-into-default" style="font-size: 10px; padding: 1px 6px;">转为默认行为</button>
+          </div>
+          <div class="branch-triggers-wrap" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${
+              incomingTrigIds.length === 0
+                ? '<span style="font-size: 10px; color: #64748b;">当前无连入 Trigger，请在上方为该 Event 添加连入 Trigger</span>'
+                : incomingTrigIds
+                    .map((tid) => {
+                      const t = p.triggers.find((x) => x.id === tid);
+                      const checked = b.when.includes(tid);
+                      const title = t ? t.title.replace('⚡ trigger: ', '') : tid;
+                      return `
+                  <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: ${checked ? '#1e293b' : 'transparent'}; border: 1px solid ${checked ? '#38bdf8' : '#334155'}; border-radius: 4px; padding: 2px 6px; cursor: pointer; color: ${checked ? '#38bdf8' : '#94a3b8'};">
+                    <input type="checkbox" class="chk-trigger" data-tid="${tid}" ${checked ? 'checked' : ''} style="margin: 0; cursor: pointer;" />
+                    <span>${this.escape(title)}</span>
+                  </label>
+                `;
+                    })
+                    .join('')
+            }
+          </div>
+        </div>
+      `
+      }
 
       <!-- 步骤列表 -->
       <div class="steps-container"></div>
@@ -308,6 +432,29 @@ export class NodeInspector {
         <button class="mini-btn btn-add-step" data-type="add" style="font-size: 10px; padding: 3px 6px;">+ ➕ 增减数值</button>
       </div>
     `;
+
+    // 绑定分支类型转换
+    card.querySelector('.btn-turn-into-default')?.addEventListener('click', () => {
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        const targetB = targetEv?.branches.find((x) => x.id === b.id);
+        if (targetB) {
+          targetB.when = [];
+        }
+      }, 'structure');
+    });
+
+    card.querySelector('.btn-turn-into-cond')?.addEventListener('click', () => {
+      if (incomingTrigIds.length > 0) {
+        project.change((d) => {
+          const targetEv = d.events.find((x) => x.id === ev.id);
+          const targetB = targetEv?.branches.find((x) => x.id === b.id);
+          if (targetB) {
+            targetB.when = [incomingTrigIds[0]];
+          }
+        }, 'structure');
+      }
+    });
 
     // 绑定分支标题修改
     const titleInp = card.querySelector('.branch-title-input') as HTMLInputElement;

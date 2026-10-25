@@ -21,16 +21,15 @@ export function mainGraphEdges(p: ProjectData): DerivedEdge[] {
   const edges: DerivedEdge[] = [];
   const seen = new Set<string>();
   const trigIds = new Set(p.triggers.map((t) => t.id));
-  p.events.forEach((ev) =>
-    ev.branches.forEach((b) =>
-      b.when.forEach((tid) => {
-        const id = `${tid}->${ev.id}`;
-        if (!trigIds.has(tid) || seen.has(id)) return;
-        seen.add(id);
-        edges.push({ id, from: tid, to: ev.id, kind: 'control' });
-      })
-    )
-  );
+  p.events.forEach((ev) => {
+    const incoming = ev.incomingTriggers ?? Array.from(new Set(ev.branches.flatMap((b) => b.when)));
+    incoming.forEach((tid) => {
+      const id = `${tid}->${ev.id}`;
+      if (!trigIds.has(tid) || seen.has(id)) return;
+      seen.add(id);
+      edges.push({ id, from: tid, to: ev.id, kind: 'control' });
+    });
+  });
   return edges;
 }
 
