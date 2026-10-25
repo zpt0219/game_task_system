@@ -152,8 +152,8 @@
       "id": "trig_castle_tp",
       "title": "⚡ trigger: 传送点已激活",
       "desc": "改变离开城堡大门（门禁 2）的行为。",
-      "x": 452,
-      "y": 269,
+      "x": 441,
+      "y": 223,
       "match": "all",
       "conds": [
         {
@@ -167,8 +167,8 @@
       "id": "trig_princess_in_party",
       "title": "⚡ trigger: 公主在队伍",
       "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
-      "x": 460,
-      "y": 380,
+      "x": 443,
+      "y": 352,
       "match": "all",
       "conds": [
         {

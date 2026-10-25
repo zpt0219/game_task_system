@@ -6,6 +6,7 @@ import { Header } from './panels/Header';
 import { NodeInspector } from './panels/NodeInspector';
 import { StateSidebar } from './panels/StateSidebar';
 import { GraphCanvas } from './panels/GraphCanvas';
+import { setupSplitters } from './panels/Splitter';
 import { isTypingTarget } from './utils/dom';
 
 async function initApp(): Promise<void> {
@@ -52,6 +53,7 @@ async function initApp(): Promise<void> {
   new NodeInspector(dialog);
   new StateSidebar();
   canvas = new GraphCanvas(dialog);
+  setupSplitters();
 
   // 4. 全局快捷键绑定
   window.addEventListener('keydown', (e) => {

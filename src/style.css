@@ -1,17 +1,44 @@
 /* ==========================================================================
    《紫水晶骑士物语》任务与条件图谱原型 - 全局样式表 (Vite + TypeScript)
    三栏式布局：左状态面板 | 中精简图谱画布 | 右节点与 ActionSequence 详细面板
+   样式参考与学习自 64px-portrait-studio 深色主题与可拖拽分割条设计
    ========================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 :root {
-  --bg-dark: #0a0e17;
-  --bg-panel: #111827;
-  --bg-card: #1f2937;
-  --bg-card-hover: #283548;
-  --border-color: #374151;
-  --border-bright: #4b5563;
+  --bg-app: #0c0d14;
+  --bg-pane: #131520;
+  --bg-pane-hover: #191c2b;
+  --bg-card: #181b28;
+  --bg-card-hover: #202436;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(139, 92, 246, 0.5);
+
+  --accent-primary: #7c3aed;
+  --accent-primary-hover: #8b5cf6;
+  --accent-primary-glow: rgba(124, 58, 237, 0.35);
+  --accent-secondary: #06b6d4;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+  --accent-success: #10b981;
+
   --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
+  --text-sub: #9ca3af;
+  --text-muted: #6b7280;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* 兼容历史变量名 */
+  --bg-dark: #0c0d14;
+  --bg-panel: #131520;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-bright: rgba(255, 255, 255, 0.16);
   --text-dim: #6b7280;
 
   /* 节点类别配色 */
@@ -24,44 +51,62 @@
   --color-cond-ach: #ef4444;
   --color-cond-ach-bg: rgba(239, 68, 68, 0.15);
 
-  --color-event-card: #1e293b;
-  --color-event-border: #334155;
+  --color-event-card: #181b28;
+  --color-event-border: rgba(255, 255, 255, 0.12);
   --color-edge-active: #10b981;
   --color-edge-inactive: #475569;
   --color-edge-effect: #38bdf8;
   --color-edge-not: #f59e0b;
 }
 
-* {
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
   user-select: none;
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  background-color: var(--bg-dark);
+body, html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
   color: var(--text-main);
   height: 100vh;
   width: 100vw;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   全局自定义滚动条 (学习自 64px-portrait-studio)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* ==========================================================================
    1. 顶部导航栏 (Header)
    ========================================================================== */
 .top-header {
-  height: 56px;
-  background: rgba(17, 24, 39, 0.95);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-color);
+  height: 52px;
+  background: var(--bg-pane);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
   z-index: 100;
   flex-shrink: 0;
 }
@@ -74,117 +119,136 @@ body {
 
 .brand-logo {
   font-size: 22px;
-  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.6));
+  filter: drop-shadow(0 0 8px var(--accent-primary-glow));
 }
 
 .brand-title {
   font-size: 15px;
   font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.5px;
+  letter-spacing: -0.2px;
+  background: linear-gradient(135deg, #ffffff 40%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .breadcrumb {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.04);
   padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
 }
 
 .mode-switcher {
   display: flex;
-  background: #0f172a;
+  background: rgba(0, 0, 0, 0.45);
   padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
   gap: 4px;
 }
 
 .mode-btn {
   background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 5px 12px;
+  border: 1px solid transparent;
+  color: var(--text-sub);
+  padding: 5px 14px;
   font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .mode-btn:hover {
-  color: #fff;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .mode-btn.active {
-  background: #3b82f6;
-  color: #fff;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+  background: var(--bg-card);
+  color: #ffffff;
+  border-color: rgba(124, 58, 237, 0.6);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.35);
+  font-weight: 600;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .preset-select {
-  background: #1f2937;
-  color: #f3f4f6;
-  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
   padding: 5px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.15s ease;
 }
 
 .preset-select:hover {
-  border-color: #60a5fa;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .btn-icon {
-  background: #1f2937;
-  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   color: var(--text-main);
   padding: 5px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
 
 .btn-icon:hover {
-  background: #374151;
-  border-color: #9ca3af;
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.save-status-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
 }
 
 /* ==========================================================================
-   2. 主工作区布局 (三栏布局: 左状态 | 中画布 | 右详情)
+   2. 主工作区布局 (三栏布局 + 可拖动分割条)
    ========================================================================== */
 .main-container {
   flex: 1;
   display: flex;
   position: relative;
+  min-height: 0;
   overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #151724 0%, #0c0d14 100%);
 }
 
 /* 左边栏：当前队伍与世界状态面板 */
 .left-sidebar {
-  width: 300px;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border-color);
+  width: 290px;
+  min-width: 200px;
+  max-width: 520px;
+  background: var(--bg-pane);
   display: flex;
   flex-direction: column;
-  z-index: 80;
+  z-index: 10;
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -192,19 +256,82 @@ body {
 /* 右边栏：节点与 ActionSequence 详细面板 */
 .right-sidebar {
   width: 380px;
-  background: var(--bg-panel);
-  border-left: 1px solid var(--border-color);
+  min-width: 260px;
+  max-width: 650px;
+  background: var(--bg-pane);
   display: flex;
   flex-direction: column;
-  z-index: 80;
+  z-index: 10;
   overflow: hidden;
   flex-shrink: 0;
+}
+
+/* ==========================================================================
+   可拖拽分割条 (Draggable Column Splitter - 学习自 64px-portrait-studio)
+   ========================================================================== */
+.column-splitter {
+  width: 8px;
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+  user-select: none;
+}
+
+.column-splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.column-splitter:hover,
+.column-splitter.is-active {
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.column-splitter:hover::before,
+.column-splitter.is-active::before {
+  background: var(--accent-primary);
+  width: 3px;
+  left: 2px;
+  box-shadow: 0 0 8px var(--accent-primary-glow);
+}
+
+.splitter-handle {
+  width: 4px;
+  height: 30px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: all 0.15s ease;
+  z-index: 1;
+}
+
+.column-splitter:hover .splitter-handle,
+.column-splitter.is-active .splitter-handle {
+  background: #ffffff;
+  height: 44px;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+}
+
+body.is-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .panel-header {
   padding: 12px 16px;
   background: rgba(0, 0, 0, 0.25);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -212,11 +339,11 @@ body {
 
 .inspector-scroll-container {
   flex: 1;
-  padding: 16px;
+  padding: 14px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .inspector-section {
