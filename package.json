@@ -1,0 +1,17 @@
+{
+  "name": "game-task-system",
+  "private": true,
+  "version": "1.0.0",
+  "description": "紫水晶骑士物语 · 任务与条件依赖图谱编辑器 & 交互试玩引擎 (TypeScript + Vite)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

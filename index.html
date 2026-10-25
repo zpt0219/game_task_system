@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>《紫水晶骑士物语》任务与条件图谱原型</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+  <!-- 1. 顶部全局导航栏 -->
+  <header class="top-header">
+    <div class="brand-section">
+      <div class="brand-logo">🔮</div>
+      <div class="brand-title">紫水晶骑士物语 · 任务与条件依赖图谱</div>
+      <div class="breadcrumb">🏰 初始城堡 (Castle)</div>
+    </div>
+
+    <!-- 核心模式切换器 -->
+    <div class="mode-switcher">
+      <button id="modePlayBtn" class="mode-btn active">
+        <span>🎮</span> Play 模式 (交互试玩)
+      </button>
+      <button id="modeEditBtn" class="mode-btn">
+        <span>🛠</span> 普通模式 (节点检视/编辑)
+      </button>
+    </div>
+
+    <div class="header-actions">
+      <select id="presetSelect" class="preset-select" title="快速切换测试预设"></select>
+      <button id="btnResetLayout" class="btn-icon" title="将所有节点恢复为默认无重叠排布">
+        <span>📐</span> 恢复默认布局
+      </button>
+      <button id="btnResetState" class="btn-icon" title="重置为初始状态">
+        <span>🔄</span> 重置初始态
+      </button>
+    </div>
+  </header>
+
+  <!-- 2. 主体工作区 (三栏布局: 左状态 | 中画布 | 右详情) -->
+  <main class="main-container">
+    <!-- 左边栏：「当前队伍与主角状态」面板 -->
+    <aside id="leftSidebar" class="left-sidebar">
+      <!-- 勇者基础属性 -->
+      <section class="panel-section">
+        <div class="panel-title">
+          <span>👑 勇者当前属性</span>
+        </div>
+        <div class="hero-stats-grid">
+          <!-- HP -->
+          <div class="stat-item" style="grid-column: span 2;">
+            <div class="stat-label">生命值 HP</div>
+            <div class="stat-val-row">
+              <span id="statHp" class="stat-value" style="color: #34d399;">60 / 100</span>
+              <div class="stat-btn-group">
+                <button id="btnHpMinus" class="mini-btn" title="-10 HP">-</button>
+                <button id="btnHpPlus" class="mini-btn" title="+10 HP">+</button>
+              </div>
+            </div>
+            <div class="hp-bar-wrap">
+              <div id="hpBarFill" class="hp-bar-fill" style="width: 60%;"></div>
+            </div>
+          </div>
+          <!-- 攻击 -->
+          <div class="stat-item">
+            <div class="stat-label">攻击力 ATK</div>
+            <div class="stat-val-row">
+              <span id="statAtk" class="stat-value" style="color: #f87171;">40</span>
+            </div>
+          </div>
+          <!-- 防御 -->
+          <div class="stat-item">
+            <div class="stat-label">防御力 DEF</div>
+            <div class="stat-val-row">
+              <span id="statDef" class="stat-value" style="color: #60a5fa;">40</span>
+            </div>
+          </div>
+          <!-- 金币 -->
+          <div class="stat-item" style="grid-column: span 2;">
+            <div class="stat-label">金币 GOLD</div>
+            <div class="stat-val-row">
+              <span id="statGold" class="stat-value" style="color: #fbbf24;">50 G</span>
+              <button id="btnGoldPlus" class="mini-btn" style="width: auto; padding: 2px 8px;" title="+100 金币">+100G</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 队伍同行同伴 -->
+      <section class="panel-section">
+        <div class="panel-title">
+          <span>👥 当前队伍同伴 (Party)</span>
+        </div>
+        <div class="party-list">
+          <div class="party-item active">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>👑</span>
+              <span style="font-weight: 600; font-size: 13px;">紫水晶勇者</span>
+            </div>
+            <span style="font-size: 11px; color: #94a3b8;">领队</span>
+          </div>
+
+          <div id="partyPrincessItem" class="party-item" title="点击以公主为中心，在图谱中高亮所有关联对话" style="cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>👸</span>
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">紫水晶公主</div>
+                <div style="font-size: 10px; color: #9ca3af;">战后回血 / 噩梦互斥</div>
+              </div>
+            </div>
+            <span id="partyPrincessStatusPill" class="item-status status-grey">未在队</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 拥有道具 -->
+      <section class="panel-section">
+        <div class="panel-title">
+          <span>🎒 关键道具 (Items)</span>
+        </div>
+        <div class="items-grid">
+          <div id="itemBookBadge" class="item-badge" title="点击以冒险书为中心，在图谱中高亮所有关联对话">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>📘</span>
+              <span style="font-size: 13px; font-weight: 600;">冒险书 (book)</span>
+            </div>
+            <span class="item-status status-grey" style="font-size: 11px;">未拥有</span>
+          </div>
+
+          <div id="itemMapBadge" class="item-badge" title="点击以世界地图为中心，在图谱中高亮所有关联对话">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>🗺️</span>
+              <span style="font-size: 13px; font-weight: 600;">世界地图 (map)</span>
+            </div>
+            <span class="item-status status-grey" style="font-size: 11px;">未拥有</span>
+          </div>
+
+          <div id="itemHpGemBadge" class="item-badge" title="点击查看生命宝珠说明">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>💎</span>
+              <span style="font-size: 13px; font-weight: 600;">生命宝珠 (hp_gem)</span>
+            </div>
+            <span class="item-status status-grey" style="font-size: 11px;">未拥有</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 传送点网络 -->
+      <section class="panel-section">
+        <div class="panel-title">
+          <span>🗽 地图传送点 (Teleport)</span>
+        </div>
+        <div id="tpCastleItem" class="party-item" title="点击以王城传送点为中心，在图谱中高亮所有关联对话" style="cursor: pointer;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>🗽</span>
+            <span style="font-weight: 600; font-size: 13px;">王城女神像 (castle)</span>
+          </div>
+          <span id="tpCastleStatusPill" class="item-status status-grey">未激活</span>
+        </div>
+      </section>
+
+      <!-- 难度成就监控 -->
+      <section class="panel-section">
+        <div class="panel-title">
+          <span>🏆 难度成就监控 (Achievements)</span>
+        </div>
+
+        <div id="achNightmareItem" class="achievement-item" title="点击以噩梦成就为中心，在图谱中高亮关联事件" style="cursor: pointer;">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">噩梦：不使用公主</div>
+            <div style="font-size: 10px; color: #9ca3af;">公主入队时熔断</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="achNightmareBadge" class="ach-badge active">进行中</span>
+            <button class="mini-btn ach-reset-btn" data-key="no_use_princess" title="重置此成就">↺</button>
+          </div>
+        </div>
+
+        <div id="achHardItem" class="achievement-item" title="点击以困难成就为中心，在图谱中高亮关联事件" style="cursor: pointer;">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">困难：不用床/私房钱</div>
+            <div style="font-size: 10px; color: #9ca3af;">睡床或拿私房钱熔断</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="achHardBadge" class="ach-badge active">进行中</span>
+            <button class="mini-btn ach-reset-btn" data-key="no_use_bed" title="重置此成就">↺</button>
+          </div>
+        </div>
+
+        <div id="achNormalItem" class="achievement-item" title="点击以普通成就为中心，在图谱中高亮关联事件" style="cursor: pointer;">
+          <div>
+            <div style="font-size: 12px; font-weight: 600;">普通：不用私房钱</div>
+            <div style="font-size: 10px; color: #9ca3af;">领取大钟私房钱熔断</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="achNormalBadge" class="ach-badge active">进行中</span>
+            <button class="mini-btn ach-reset-btn" data-key="no_use_money" title="重置此成就">↺</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 实时事件日志 -->
+      <section class="panel-section" style="flex: 1; display: flex; flex-direction: column;">
+        <div class="panel-title">
+          <span>📜 实时事件与状态流转日志</span>
+        </div>
+        <div id="logBox" class="log-box"></div>
+      </section>
+    </aside>
+
+    <!-- 中央图谱画布视图 (精简节点 + SVG 贝塞尔连线) -->
+    <div id="graphViewport" class="graph-viewport">
+      <!-- 实体独立聚焦图谱顶栏浮标 (点击道具/成就/实体时显示) -->
+      <div id="focalBanner" class="focal-banner hidden">
+        <button id="btnBackToMain" class="back-main-btn" title="返回全局大图 (快捷键: Esc)">
+          <span class="btn-arrow">←</span> 返回全局大图
+        </button>
+        <div class="focal-info">
+          <span class="focal-tag">围绕实体独立图谱</span>
+          <span id="focalTitle" class="focal-title">📘 拥有：冒险书 (book)</span>
+          <span id="focalStatusPill" class="focal-status-pill status-pill">● 状态</span>
+        </div>
+        <div class="focal-meta">
+          <span id="focalSourcesCount">📥 1个来源</span>
+          <span id="focalTargetsCount">📤 1个后续触发</span>
+          <span class="kbd-hint">ESC 退出</span>
+        </div>
+      </div>
+
+      <div id="graphCanvas" class="graph-canvas">
+        <!-- SVG 动态连线层 -->
+        <svg id="svgEdges" class="svg-layer"></svg>
+        <!-- 连线标签层 -->
+        <div id="edgeLabelsContainer" class="edge-label-container"></div>
+        <!-- 节点层 -->
+        <div id="nodesContainer" class="nodes-layer"></div>
+      </div>
+    </div>
+
+    <!-- 右边栏：「节点与 ActionSequence 详细面板」 -->
+    <aside id="rightSidebar" class="right-sidebar">
+      <div class="panel-header">
+        <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">
+          📋 节点详情与 ActionSequence
+        </div>
+      </div>
+      <div id="inspectorContent" class="inspector-scroll-container">
+        <!-- 动态注入选中节点的 ActionSequence 分支、前置条件、后续影响及执行按钮 -->
+      </div>
+    </aside>
+  </main>
+
+  <!-- 3. RPG 对话弹窗 / 剧情交互层 -->
+  <div id="dialogOverlay" class="dialog-overlay">
+    <div class="rpg-dialog-box">
+      <div class="dialog-header">
+        <div id="dialogAvatar" class="dialog-avatar">💬</div>
+        <div>
+          <div id="dialogSpeakerName" class="dialog-speaker-name">说话人</div>
+          <div id="dialogSpeakerTitle" class="dialog-speaker-title">身份头衔</div>
+        </div>
+      </div>
+      <div id="dialogBody" class="dialog-body">对话台词文本内容</div>
+      <div id="dialogFooter" class="dialog-footer">
+        <!-- 动态生成选项或确认按钮 -->
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
