@@ -24,35 +24,18 @@ async function initApp(): Promise<void> {
 
   // 3. 构建各个面板
   const dialog = new RpgDialog();
-  let canvas: GraphCanvas | null = null;
+  const canvas = new GraphCanvas(dialog);
 
   new Header(
     () => {
-      if (canvas) {
-        canvas.resetLayout();
-        appState.log('📐 已恢复默认无遮挡任务布局！', true);
-      }
+      canvas.resetLayout();
+      appState.log('📐 已恢复默认无遮挡任务布局！', true);
     },
-    // + Event 按钮
-    () => {
-      // 在画布当前视野中心新建
-      const p = project.get();
-      const ev = project.addEvent(200 + p.events.length * 20, 200 + p.events.length * 20);
-      appState.select({ kind: 'event', id: ev.id });
-      appState.log(`✨ 新建 Event 节点：[${ev.title}]`, true);
-    },
-    // + Trigger 按钮
-    () => {
-      const p = project.get();
-      const tr = project.addTrigger(460, 100 + p.triggers.length * 40);
-      appState.select({ kind: 'trigger', id: tr.id });
-      appState.log(`✨ 新建 Trigger 判断器：[${tr.title}]`, true);
-    }
+    canvas
   );
 
   new NodeInspector(dialog);
   new StateSidebar();
-  canvas = new GraphCanvas(dialog);
   setupSplitters();
 
   // 4. 全局快捷键绑定
@@ -84,26 +67,17 @@ async function initApp(): Promise<void> {
 
       if (sel.kind === 'event') {
         const ev = project.getEvent(sel.id);
-        if (ev && confirm(`确定删除 Event「${ev.title}」吗？`)) {
+        if (ev) {
           project.deleteEvent(sel.id);
           appState.select(null);
-          appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]`);
+          appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]（Ctrl+Z 可撤销）`);
         }
       } else if (sel.kind === 'trigger') {
         const tr = project.getTrigger(sel.id);
         if (tr) {
-          const refs = project.findTriggerRefs(tr.id);
-          if (refs.length > 0) {
-            const names = refs.map((r) => `「${r.event.title} - ${r.branch.title}」`).join('\n');
-            if (!confirm(`该 Trigger 正在被以下 ${refs.length} 个 Event 分支引用：\n${names}\n\n确认删除吗？（删除后将一并从这些分支中移除该前置条件）`)) {
-              return;
-            }
-          } else if (!confirm(`确定删除 Trigger「${tr.title}」吗？`)) {
-            return;
-          }
           project.deleteTrigger(tr.id);
           appState.select(null);
-          appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]`);
+          appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
         }
       }
     }

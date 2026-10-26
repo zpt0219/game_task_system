@@ -257,7 +257,7 @@ body, html {
 .right-sidebar {
   width: 380px;
   min-width: 260px;
-  max-width: 650px;
+  max-width: 800px;
   background: var(--bg-pane);
   display: flex;
   flex-direction: column;
@@ -762,7 +762,7 @@ body.is-resizing {
   gap: 3px;
 }
 
-.mini-btn {
+.stat-btn-group .mini-btn {
   background: #374151;
   border: none;
   color: #fff;
@@ -773,7 +773,7 @@ body.is-resizing {
   cursor: pointer;
 }
 
-.mini-btn:hover {
+.stat-btn-group .mini-btn:hover {
   background: #4b5563;
 }
 
@@ -984,6 +984,21 @@ input:checked + .slider:before {
   border-color: #7c3aed !important;
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.35) !important;
   background: #141829 !important;
+}
+
+/* 详情面板输入控件全宽自适应 */
+.inspector-input {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+}
+
+.inspector-textarea {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  resize: vertical;
+  min-height: 52px;
 }
 
 .inspector-scroll-container select {
@@ -1238,13 +1253,60 @@ input:checked + .slider:before {
 }
 
 .danger-btn {
-  background: #dc2626;
-  color: #fff;
-  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  transition: all 0.15s ease;
 }
 
 .danger-btn:hover {
-  background: #b91c1c;
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.65);
+  color: #fca5a5;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+}
+
+/* 右侧属性面板：节点删除按钮 */
+.btn-node-delete {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.2;
+  transition: all 0.15s ease;
+  user-select: none;
+  width: auto !important;
+  height: auto !important;
+}
+
+.btn-node-delete:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-node-delete:active {
+  transform: translateY(0);
+  background: rgba(239, 68, 68, 0.35);
+}
+
+.btn-node-delete svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+  transition: transform 0.15s ease;
+}
+
+.btn-node-delete:hover svg {
+  transform: rotate(-10deg);
 }
 
 .disabled-btn {
@@ -1588,6 +1650,121 @@ input:checked + .slider:before {
   border-radius: 30px;
   animation: fadeIn 0.15s ease-out;
 }
+
+/* ==========================================================================
+   拖拽生成节点 (Drag & Drop Creation from Header)
+   ========================================================================== */
+
+/* 顶部导航栏可拖拽创建按钮样式 */
+.btn-draggable-node {
+  cursor: grab !important;
+  position: relative;
+  user-select: none;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-draggable-node:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.btn-draggable-node:active,
+.btn-draggable-node.dragging {
+  cursor: grabbing !important;
+  transform: translateY(1px) scale(0.97);
+  opacity: 0.65;
+  border-style: dashed;
+}
+
+/* 拖拽生成跟随光标的半透明实体节点幽灵 */
+.node-drag-ghost {
+  position: fixed;
+  z-index: 100000;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.04);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.7), 0 0 20px rgba(124, 58, 237, 0.45);
+  transition: opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  opacity: 0.88;
+}
+
+.node-drag-ghost.ghost-trigger {
+  background: #0d1527;
+  border: 1.5px solid #6366f1;
+  color: #fff;
+}
+
+.node-drag-ghost.ghost-event {
+  background: #1e293b;
+  border: 1.5px solid #3b82f6;
+  color: #fff;
+}
+
+.node-drag-ghost .ghost-hint-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  transition: all 0.2s ease;
+}
+
+/* 当悬浮在画布上方时的就绪反馈 */
+.node-drag-ghost.is-inside-canvas {
+  opacity: 1;
+  border-color: #10b981 !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 24px rgba(16, 185, 129, 0.55) !important;
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.node-drag-ghost.is-inside-canvas .ghost-hint-badge {
+  background: rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  font-weight: 600;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+/* 画布视口接收拖拽悬浮高亮 */
+.graph-viewport.canvas-drag-receiving {
+  outline: 2px dashed rgba(16, 185, 129, 0.6) !important;
+  outline-offset: -3px;
+  box-shadow: inset 0 0 50px rgba(16, 185, 129, 0.08) !important;
+}
+
+/* 新放置节点生成的缩放弹入波纹动画 */
+@keyframes nodeSpawnPop {
+  0% {
+    transform: scale(0.6);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.9);
+  }
+  60% {
+    transform: scale(1.08);
+    box-shadow: 0 0 25px 8px rgba(16, 185, 129, 0.5);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.node-spawn-pulse {
+  animation: nodeSpawnPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+  z-index: 100 !important;
+}
+
 
 
 

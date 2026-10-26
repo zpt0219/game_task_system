@@ -111,19 +111,23 @@ export class NodeInspector {
     metaCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <span class="event-type-badge">EVENT 节点</span>
-        <button id="btnDeleteEvent" class="danger-btn mini-btn" title="删除此 Event 节点" style="padding: 2px 8px; font-size: 11px;">
-          🗑️ 删除
+        <button id="btnDeleteEvent" class="btn-node-delete" title="删除此 Event 节点 (快捷键: Delete)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>删除节点</span>
         </button>
       </div>
 
       <div class="inspector-label">节点标题 (Title)</div>
-      <input type="text" id="evTitle" class="inspector-input" value="${this.escape(ev.title)}" style="margin-bottom: 8px;" />
+      <input type="text" id="evTitle" class="inspector-input" value="${this.escape(ev.title)}" style="width: 100%; margin-bottom: 8px; box-sizing: border-box;" />
 
       <div class="inspector-label">代码绑定标识 (sourceRef，对应 Godot 脚本)</div>
-      <input type="text" id="evSourceRef" class="inspector-input" value="${this.escape(ev.sourceRef || '')}" placeholder="例: king_conversation" style="margin-bottom: 8px; font-family: monospace; font-size: 11px;" />
+      <input type="text" id="evSourceRef" class="inspector-input" value="${this.escape(ev.sourceRef || '')}" placeholder="例: king_conversation" style="width: 100%; margin-bottom: 8px; font-family: monospace; font-size: 11px; box-sizing: border-box;" />
 
       <div class="inspector-label">功能描述 (Desc)</div>
-      <textarea id="evDesc" class="inspector-textarea" style="height: 52px;">${this.escape(ev.desc || '')}</textarea>
+      <textarea id="evDesc" class="inspector-textarea" style="width: 100%; height: 56px; resize: vertical; box-sizing: border-box;">${this.escape(ev.desc || '')}</textarea>
     `;
     this.container.appendChild(metaCard);
 
@@ -142,11 +146,9 @@ export class NodeInspector {
 
     const btnDel = metaCard.querySelector('#btnDeleteEvent') as HTMLElement;
     btnDel.onclick = () => {
-      if (confirm(`确定要删除 Event 节点「${ev.title}」吗？`)) {
-        project.deleteEvent(ev.id);
-        appState.select(null);
-        appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]`);
-      }
+      project.deleteEvent(ev.id);
+      appState.select(null);
+      appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]（Ctrl+Z 可撤销）`);
     };
 
     // 2. 试玩快速执行按钮
@@ -495,14 +497,13 @@ export class NodeInspector {
     });
 
     card.querySelector('.btn-del-branch')?.addEventListener('click', () => {
-      if (confirm(`确定删除分支「${b.title}」吗？`)) {
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          if (targetEv) {
-            targetEv.branches = targetEv.branches.filter((x) => x.id !== b.id);
-          }
-        }, 'structure');
-      }
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        if (targetEv) {
+          targetEv.branches = targetEv.branches.filter((x) => x.id !== b.id);
+        }
+      }, 'structure');
+      appState.log(`🗑️ 已删除分支：[${b.title}]（Ctrl+Z 可撤销）`);
     });
 
     // 勾选 Trigger 依赖
@@ -588,8 +589,8 @@ export class NodeInspector {
       innerForm = `
         <div style="display: grid; grid-template-columns: 42px 1fr 1fr; gap: 6px; margin-bottom: 6px;">
           <input type="text" class="say-avatar" value="${this.escape(say.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
-          <input type="text" class="say-speaker" value="${this.escape(say.speaker)}" placeholder="说话人姓名" />
-          <input type="text" class="say-title" value="${this.escape(say.speakerTitle || '')}" placeholder="身份/头衔 (可选)" />
+          <input type="text" class="say-speaker" value="${this.escape(say.speaker)}" placeholder="说话人姓名" style="width: 100%; min-width: 0; box-sizing: border-box;" />
+          <input type="text" class="say-title" value="${this.escape(say.speakerTitle || '')}" placeholder="身份/头衔 (可选)" style="width: 100%; min-width: 0; box-sizing: border-box;" />
         </div>
         <textarea class="say-text" placeholder="输入对话台词内容..." style="width: 100%; height: 56px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(say.text)}</textarea>
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -630,7 +631,7 @@ export class NodeInspector {
       innerForm = `
         <div style="display: grid; grid-template-columns: 42px 1fr; gap: 6px; margin-bottom: 6px;">
           <input type="text" class="choice-avatar" value="${this.escape(ch.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
-          <input type="text" class="choice-speaker" value="${this.escape(ch.speaker)}" placeholder="说话人姓名" />
+          <input type="text" class="choice-speaker" value="${this.escape(ch.speaker)}" placeholder="说话人姓名" style="width: 100%; min-width: 0; box-sizing: border-box;" />
         </div>
         <textarea class="choice-text" placeholder="选项提示文案..." style="width: 100%; height: 44px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(ch.text)}</textarea>
         <div style="font-size: 10px; font-weight: 700; color: #c4b5fd; margin-bottom: 4px;">选项列表 (${ch.options.length})</div>
@@ -819,16 +820,20 @@ export class NodeInspector {
     metaCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <span class="event-type-badge" style="background:#312e81; color:#c7d2fe;">TRIGGER 判断器</span>
-        <button id="btnDeleteTrigger" class="danger-btn mini-btn" title="删除此 Trigger 节点" style="padding: 2px 8px; font-size: 11px;">
-          🗑️ 删除
+        <button id="btnDeleteTrigger" class="btn-node-delete" title="删除此 Trigger 节点 (快捷键: Delete)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>删除节点</span>
         </button>
       </div>
 
       <div class="inspector-label">标题 (Title)</div>
-      <input type="text" id="trTitle" class="inspector-input" value="${this.escape(tr.title)}" style="margin-bottom: 8px;" />
+      <input type="text" id="trTitle" class="inspector-input" value="${this.escape(tr.title)}" style="width: 100%; margin-bottom: 8px; box-sizing: border-box;" />
 
       <div class="inspector-label">描述 (Desc)</div>
-      <textarea id="trDesc" class="inspector-textarea" style="height: 48px; margin-bottom: 8px;">${this.escape(tr.desc || '')}</textarea>
+      <textarea id="trDesc" class="inspector-textarea" style="width: 100%; height: 52px; margin-bottom: 8px; resize: vertical; box-sizing: border-box;">${this.escape(tr.desc || '')}</textarea>
 
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: #0f172a; border: 1px solid #334155; border-radius: 6px;">
         <span style="font-size: 11px; color: #94a3b8;">当前实时求值状态：</span>
@@ -850,18 +855,9 @@ export class NodeInspector {
 
     const btnDel = metaCard.querySelector('#btnDeleteTrigger') as HTMLElement;
     btnDel.onclick = () => {
-      const refs = project.findTriggerRefs(tr.id);
-      if (refs.length > 0) {
-        const names = refs.map((r) => `「${r.event.title} - ${r.branch.title}」`).join('\n');
-        if (!confirm(`该 Trigger 正在被以下 ${refs.length} 个 Event 分支引用：\n${names}\n\n确认删除吗？（删除后将一并从这些分支中移除该前置条件）`)) {
-          return;
-        }
-      } else if (!confirm(`确定要删除 Trigger 节点「${tr.title}」吗？`)) {
-        return;
-      }
       project.deleteTrigger(tr.id);
       appState.select(null);
-      appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]`);
+      appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
     };
 
     // 2. 判断条件列表

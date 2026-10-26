@@ -607,19 +607,18 @@ export class GraphCanvas {
         title: `${trig.title} ➔ 改变行为：${ev.title} (点击可断开连线)`,
         onClick: (e) => {
           e.stopPropagation();
-          if (confirm(`是否断开 Trigger 连入关系：\n\n${trig.title} ➔ ${ev.title}？`)) {
-            project.change((d) => {
-              const targetEv = d.events.find((x) => x.id === edge.to);
-              if (targetEv) {
-                const incoming =
-                  targetEv.incomingTriggers ?? Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
-                targetEv.incomingTriggers = incoming.filter((t) => t !== edge.from);
-                targetEv.branches.forEach((b) => {
-                  b.when = b.when.filter((w) => w !== edge.from);
-                });
-              }
-            }, 'structure');
-          }
+          project.change((d) => {
+            const targetEv = d.events.find((x) => x.id === edge.to);
+            if (targetEv) {
+              const incoming =
+                targetEv.incomingTriggers ?? Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
+              targetEv.incomingTriggers = incoming.filter((t) => t !== edge.from);
+              targetEv.branches.forEach((b) => {
+                b.when = b.when.filter((w) => w !== edge.from);
+              });
+            }
+          }, 'structure');
+          appState.log(`✂️ 已断开连线：${trig.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
         }
       });
     });
@@ -800,6 +799,84 @@ export class GraphCanvas {
       if (ev) titleEl.textContent = ev.title;
       if (tr) titleEl.textContent = tr.title;
     }
+  }
+
+  // ------------------------------------------------------------------ 坐标转换与拖拽生成支持
+
+  public clientToCanvasPos(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.viewport.getBoundingClientRect();
+    const x = Math.round((clientX - rect.left - this.panX) / this.zoom);
+    const y = Math.round((clientY - rect.top - this.panY) / this.zoom);
+    return { x, y };
+  }
+
+  public isInsideViewport(clientX: number, clientY: number): boolean {
+    const rect = this.viewport.getBoundingClientRect();
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }
+
+  public getViewportCenterCanvasPos(): { x: number; y: number } {
+    const rect = this.viewport.getBoundingClientRect();
+    return this.clientToCanvasPos(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  public setDragOverState(active: boolean): void {
+    this.viewport.classList.toggle('canvas-drag-receiving', active);
+  }
+
+  public pulseNode(id: string): void {
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`node-${id}`);
+      if (!el) return;
+      el.classList.remove('node-spawn-pulse');
+      void el.offsetWidth;
+      el.classList.add('node-spawn-pulse');
+      setTimeout(() => {
+        el.classList.remove('node-spawn-pulse');
+      }, 1000);
+    });
+  }
+
+  public isFocalView(): boolean {
+    return this.viewMode === 'focal';
+  }
+
+  public createNodeAt(type: 'event' | 'trigger', canvasX: number, canvasY: number): string {
+    if (this.viewMode === 'focal') {
+      this.showMainGraph();
+    }
+    if (appState.getMode() !== 'edit') {
+      appState.setMode('edit');
+    }
+
+    if (type === 'event') {
+      const ev = project.addEvent(canvasX, canvasY);
+      appState.select({ kind: 'event', id: ev.id });
+      appState.log(`💬 拖拽生成 Event 任务节点：[${ev.title}] (坐标: ${canvasX}, ${canvasY})`, true);
+      this.pulseNode(ev.id);
+      return ev.id;
+    } else {
+      const tr = project.addTrigger(canvasX, canvasY);
+      appState.select({ kind: 'trigger', id: tr.id });
+      appState.log(`⚡ 拖拽生成 Trigger 条件判断器：[${tr.title}] (坐标: ${canvasX}, ${canvasY})`, true);
+      this.pulseNode(tr.id);
+      return tr.id;
+    }
+  }
+
+  public createNodeAtCenter(type: 'event' | 'trigger'): string {
+    const center = this.getViewportCenterCanvasPos();
+    const p = project.get();
+    const count = type === 'event' ? p.events.length : p.triggers.length;
+    const stagger = (count % 8) * 16;
+    const x = Math.round(center.x - 70 + stagger);
+    const y = Math.round(center.y - 18 + stagger);
+    return this.createNodeAt(type, x, y);
   }
 
   // ------------------------------------------------------------------ 画布事件 & 视口缩放平移

@@ -27,7 +27,7 @@ export function setupSplitters(): void {
   };
 
   leftSidebar.style.width = `${getSavedWidth(STORAGE_KEY_LEFT, 200, 520, DEFAULT_LEFT_WIDTH)}px`;
-  rightSidebar.style.width = `${getSavedWidth(STORAGE_KEY_RIGHT, 260, 650, DEFAULT_RIGHT_WIDTH)}px`;
+  rightSidebar.style.width = `${getSavedWidth(STORAGE_KEY_RIGHT, 260, 800, DEFAULT_RIGHT_WIDTH)}px`;
 
   // 绑定拖拽逻辑
   const makeDraggable = (
@@ -82,5 +82,5 @@ export function setupSplitters(): void {
   };
 
   makeDraggable(splitterLeft, leftSidebar, 1, 200, 520, STORAGE_KEY_LEFT, DEFAULT_LEFT_WIDTH);
-  makeDraggable(splitterRight, rightSidebar, -1, 260, 650, STORAGE_KEY_RIGHT, DEFAULT_RIGHT_WIDTH);
+  makeDraggable(splitterRight, rightSidebar, -1, 260, 800, STORAGE_KEY_RIGHT, DEFAULT_RIGHT_WIDTH);
 }
