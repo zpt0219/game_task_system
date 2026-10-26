@@ -244,7 +244,7 @@ export class GraphCanvas {
     const p = project.get();
 
     // 1. Condition 条件节点
-    (p.conditions || (p as any).triggers || []).forEach((cond: ConditionDef) => {
+    p.conditions.forEach((cond: ConditionDef) => {
       const el = document.createElement('div');
       el.id = `node-${cond.id}`;
       el.className = 'graph-node condition-node compact-node';
@@ -449,9 +449,9 @@ export class GraphCanvas {
               const checkDesc =
                 c.checks
                   .map((chk) => {
-                    const cid = chk.conditionId || (chk as any).triggerId;
+                    const cid = chk.conditionId;
                     const t = project.getCondition(cid);
-                    const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
+                    const title = t ? t.title.replace(/^🔍 condition: /, '') : cid;
                     const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
                     return `${title}${opVal}`;
                   })
@@ -505,9 +505,9 @@ export class GraphCanvas {
                 o.checks && o.checks.length > 0
                   ? o.checks
                       .map((chk) => {
-                        const cid = chk.conditionId || (chk as any).triggerId;
+                        const cid = chk.conditionId;
                         const t = project.getCondition(cid);
-                        const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
+                        const title = t ? t.title.replace(/^🔍 condition: /, '') : cid;
                         const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
                         return `${title}${opVal}`;
                       })
@@ -980,7 +980,7 @@ export class GraphCanvas {
 
   // ------------------------------------------------------------------ 节点交互 (拖拽 / 点击 / 双击试玩)
 
-  private attachNodeInteraction(el: HTMLElement, kind: 'event' | 'condition' | 'trigger', id: string): void {
+  private attachNodeInteraction(el: HTMLElement, kind: 'event' | 'condition', id: string): void {
     let hasMoved = false;
 
     el.onmousedown = (e) => {
@@ -1012,7 +1012,7 @@ export class GraphCanvas {
             (d) => {
               const node = kind === 'event'
                 ? d.events.find((x) => x.id === id)
-                : (d.conditions || (d as any).triggers || []).find((x: ConditionDef) => x.id === id);
+                : d.conditions.find((x: ConditionDef) => x.id === id);
               if (node) {
                 node.x = newX;
                 node.y = newY;
@@ -1090,7 +1090,7 @@ export class GraphCanvas {
   private startConnecting(condId: string): void {
     this.connectingCondId = condId;
     const cond = project.getCondition(condId);
-    const title = cond ? cond.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : condId;
+    const title = cond ? cond.title.replace(/^🔍 condition: /, '') : condId;
     if (!this.connectingBannerEl) {
       this.connectingBannerEl = document.createElement('div');
       this.connectingBannerEl.className = 'connecting-banner';
@@ -1123,13 +1123,10 @@ export class GraphCanvas {
       const targetEv = d.events.find((x) => x.id === evId);
       if (targetEv) {
         if (!targetEv.incomingConditions) {
-          targetEv.incomingConditions = targetEv.incomingTriggers ? [...targetEv.incomingTriggers] : [];
+          targetEv.incomingConditions = [];
         }
         if (!targetEv.incomingConditions.includes(chosenCondId)) {
           targetEv.incomingConditions.push(chosenCondId);
-        }
-        if (targetEv.incomingTriggers && !targetEv.incomingTriggers.includes(chosenCondId)) {
-          targetEv.incomingTriggers.push(chosenCondId);
         }
       }
     }, 'structure');
@@ -1153,7 +1150,7 @@ export class GraphCanvas {
     const p = project.get();
 
     // 1. Condition 状态
-    (p.conditions || (p as any).triggers || []).forEach((cond: ConditionDef) => {
+    p.conditions.forEach((cond: ConditionDef) => {
       const el = document.getElementById(`node-${cond.id}`);
       if (!el) return;
       const ok = evalCondition(p, state, cond);
@@ -1253,7 +1250,7 @@ export class GraphCanvas {
       const condActive = evalCondition(p, state, cond);
       const isSelected =
         sel &&
-        (((sel.kind === 'condition' || sel.kind === 'trigger') && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
+        ((sel.kind === 'condition' && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
 
       let x1: number, y1: number, x2: number, y2: number;
       let cx1: number, cy1: number, cx2: number, cy2: number;
@@ -1453,15 +1450,14 @@ export class GraphCanvas {
     let condIdx = 0;
 
     project.change((d) => {
-      const allConds = d.conditions || (d as any).triggers || [];
-      allConds.forEach((t: ConditionDef) => {
+      d.conditions.forEach((t: ConditionDef) => {
         t.x = 460;
         t.y = 100 + condIdx * 140;
         condIdx++;
       });
       d.events.forEach((e) => {
         // 判断放在左栏还是右栏：被 condition 控制的放右栏，起始 source 放左栏
-        const inConds = e.incomingConditions ?? e.incomingTriggers ?? [];
+        const inConds = e.incomingConditions ?? [];
         const hasInputs = inConds.length > 0;
         if (hasInputs) {
           e.x = 860;
@@ -1774,11 +1770,11 @@ export class GraphCanvas {
     const el = document.getElementById(`node-${id}`);
     if (!el) return;
     const ev = project.getEvent(id);
-    const tr = project.getTrigger(id);
+    const cond = project.getCondition(id);
     const titleEl = el.querySelector('.node-title');
     if (titleEl) {
       if (ev) titleEl.textContent = ev.title;
-      if (tr) titleEl.textContent = tr.title;
+      if (cond) titleEl.textContent = cond.title;
     }
   }
 
@@ -1827,7 +1823,7 @@ export class GraphCanvas {
     return this.viewMode === 'focal';
   }
 
-  public createNodeAt(type: 'event' | 'condition' | 'trigger', canvasX: number, canvasY: number): string {
+  public createNodeAt(type: 'event' | 'condition', canvasX: number, canvasY: number): string {
     if (this.viewMode === 'focal') {
       this.showMainGraph();
     }
@@ -1850,11 +1846,10 @@ export class GraphCanvas {
     }
   }
 
-  public createNodeAtCenter(type: 'event' | 'condition' | 'trigger'): string {
+  public createNodeAtCenter(type: 'event' | 'condition'): string {
     const center = this.getViewportCenterCanvasPos();
     const p = project.get();
-    const allConds = p.conditions || (p as any).triggers || [];
-    const count = type === 'event' ? p.events.length : allConds.length;
+    const count = type === 'event' ? p.events.length : p.conditions.length;
     const stagger = (count % 8) * 16;
     const x = Math.round(center.x - 70 + stagger);
     const y = Math.round(center.y - 18 + stagger);
@@ -1998,7 +1993,7 @@ export class GraphCanvas {
           const ev = project.addEvent(cx, cy);
           appState.select({ kind: 'event', id: ev.id });
           appState.log(`✨ 新建 Event 节点：[${ev.title}]`, true);
-        } else if (action === 'add-condition' || action === 'add-trigger') {
+        } else if (action === 'add-condition') {
           const cond = project.addCondition(cx, cy);
           appState.select({ kind: 'condition', id: cond.id });
           appState.log(`✨ 新建 Condition 条件节点：[${cond.title}]`, true);

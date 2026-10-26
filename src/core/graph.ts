@@ -19,11 +19,10 @@ export interface DerivedEdge {
 export function mainGraphEdges(p: ProjectData): DerivedEdge[] {
   const edges: DerivedEdge[] = [];
   const seen = new Set<string>();
-  const allConditions = p.conditions || (p as any).triggers || [];
-  const condIds = new Set(allConditions.map((t: ConditionDef) => t.id));
+  const condIds = new Set(p.conditions.map((t: ConditionDef) => t.id));
 
   p.events.forEach((ev) => {
-    const incoming = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incoming = ev.incomingConditions ?? [];
     incoming.forEach((cid) => {
       const id = `${cid}->${ev.id}`;
       if (!condIds.has(cid) || seen.has(id)) return;
@@ -48,7 +47,7 @@ function eventWrites(ev: EventDef, key: string): boolean {
 }
 
 function eventReads(ev: EventDef, key: string, condIds: Set<string>): boolean {
-  const incoming = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+  const incoming = ev.incomingConditions ?? [];
   if (incoming.some((cid) => condIds.has(cid))) return true;
 
   if (ev.actionGraph?.nodes) {
@@ -59,11 +58,11 @@ function eventReads(ev: EventDef, key: string, condIds: Set<string>): boolean {
         }
       } else if (node.type === 'selector') {
         for (const c of node.cases) {
-          if (c.checks.some((chk) => condIds.has(chk.conditionId || (chk as any).triggerId))) return true;
+          if (c.checks.some((chk) => condIds.has(chk.conditionId))) return true;
         }
       } else if (node.type === 'choice') {
         for (const o of node.options) {
-          if (o.checks?.some((chk) => condIds.has(chk.conditionId || (chk as any).triggerId))) return true;
+          if (o.checks?.some((chk) => condIds.has(chk.conditionId))) return true;
         }
       }
     }
@@ -78,10 +77,8 @@ export function varWriters(p: ProjectData, key: string): EventDef[] {
 
 /** 读取该变量的 Condition */
 export function conditionsReadingVar(p: ProjectData, key: string): ConditionDef[] {
-  const allConditions = p.conditions || (p as any).triggers || [];
-  return allConditions.filter((t: ConditionDef) => t.conds.some((c) => c.var === key));
+  return p.conditions.filter((t: ConditionDef) => t.conds.some((c) => c.var === key));
 }
-export const triggersReadingVar = conditionsReadingVar;
 
 /** 受该变量影响的 Event（专属图出边）：经由 Condition 或选项条件 */
 export function varReaders(p: ProjectData, key: string): EventDef[] {
@@ -92,11 +89,10 @@ export function varReaders(p: ProjectData, key: string): EventDef[] {
 /** 依赖某 Condition 的 Event */
 export function eventsDependingOn(p: ProjectData, conditionId: string): EventDef[] {
   return p.events.filter((ev) => {
-    const incoming = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incoming = ev.incomingConditions ?? [];
     return incoming.includes(conditionId);
   });
 }
-export const eventsControlledBy = eventsDependingOn;
 
 /** 某 Event 改变的变量 key */
 export function varsWrittenBy(p: ProjectData, ev: EventDef): string[] {

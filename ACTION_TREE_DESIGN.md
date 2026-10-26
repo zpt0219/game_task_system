@@ -144,7 +144,7 @@ export interface StartGraphNode {
 export interface SelectorCase {
   id: string;
   title: string;
-  checks: TriggerCheck[];   // 全部满足时命中此分支
+  checks: ConditionCheck[]; // 全部满足时命中此分支
   targetId?: string;        // 该分支 Out 端口指向的节点 ID
   defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
@@ -165,7 +165,7 @@ export interface ChoiceGraphOption {
   id: string;
   text: string;
   style?: ButtonStyle;
-  checks?: TriggerCheck[];  // 选项可用前置条件（基于连入的 Trigger，如 金币 >= 100）
+  checks?: ConditionCheck[]; // 选项可用前置条件（基于所依赖的 Condition，如 金币 >= 100）
   targetId?: string;        // 该选项 Out 端口指向的节点 ID
   defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
@@ -224,8 +224,8 @@ export interface ActionGraph {
      - 当连线目标是 `Choice`（玩家选项）节点时，自动设置该连线的默认选择 `defaultOptionIndex = 0`（默认最上面那个选项），并可在右侧面板中修改为任意选项 `index`。
    - 直接点击已有连线即可一键断开（无弹窗，支持 `Ctrl+Z` 撤销）。
 3. **右侧详情面板联动**：
-   - 在子图画布中单击任意节点（`Action` / `Selector` / `Choice`），右侧面板立即切换为该内部节点的专属编辑器（编辑 `Action` 内的对话/赋值步骤列表、配置 `Selector` 分支的 Trigger 阈值、配置 `Choice` 选项等）。
-   - 点击子图空白处，右侧面板展示当前所属 `Event` 的基础属性与已连入的 `Trigger` 列表。
+   - 在子图画布中单击任意节点（`Action` / `Selector` / `Choice`），右侧面板立即切换为该内部节点的专属编辑器（编辑 `Action` 内的对话/赋值步骤列表、配置 `Selector` 分支的 Condition 规则、配置 `Choice` 选项等）。
+   - 点击子图空白处，右侧面板展示当前所属 `Event` 的基础属性与所依赖的 `Condition` 列表。
 
 ---
 
@@ -233,7 +233,7 @@ export interface ActionGraph {
 
 1. **Step 1 - 数据模型与 `castle.json` 全量升级 (`src/core/types.ts` & `src/core/project.ts` & `data/castle.json`)**：
    - 新增 `ActionGraph` 及 4 类子图节点（`Start`、`Selector`、`Choice`、`Action`）定义。
-   - 在 `data/castle.json` 中新增 `⚡ trigger: 金币 (hero.gold)` 并连入三个女仆 Event；将所有城堡事件迁移为 `ActionGraph` 子图（其中三个女仆训练事件的强化动作节点 `Out` 直接连回 `Choice` 节点的 `In` 形成加点循环）。
+   - 在 `data/castle.json` 中配置 `🔍 condition: 金币 (hero.gold)` 并关联三个女仆 Event；将所有城堡事件迁移为 `ActionGraph` 子图（其中三个女仆训练事件的强化动作节点 `Out` 直接连回 `Choice` 节点的 `In` 形成加点循环）。
 2. **Step 2 - 执行器与图分析引擎升级 (`src/core/engine.ts` & `src/core/graph.ts`)**：
    - 实现 `runActionGraph` 图执行器（支持 `Start ➔ Selector / Choice / Action` 任意图流转、回跳循环与单帧防死循环保护）。
    - 升级 `graph.ts` 的变量读写分析器，确保左栏道具/状态焦点视图与顶层大图连线实时联动。
@@ -242,4 +242,4 @@ export interface ActionGraph {
    - 在 `Header` 中实现子图专属拖拽按钮（`+ 🎬 Action`、`+ 🔀 Selector`、`+ 💬 Choice`），按住左键拖到画布即可创建。
 4. **Step 4 - 右侧详情面板适配 (`src/panels/NodeInspector.ts`)**：
    - 支持选中顶层 Event 时预览子图摘要并一键进入子图；
-   - 支持选中子图内任意节点时编辑其详细属性（`Selector` 分支 Trigger 阈值、`Choice` 选项与条件、`Action` 内部步骤列表）。
+   - 支持选中子图内任意节点时编辑其详细属性（`Selector` 分支 Condition 阈值、`Choice` 选项与条件、`Action` 内部步骤列表）。

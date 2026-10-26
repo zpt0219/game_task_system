@@ -12,7 +12,7 @@ import {
 } from './types';
 
 // ============================================================================
-// 通用执行器：Trigger 求值 + Event 分支匹配 + 步骤执行
+// 通用执行器：Condition 求值 + Event 状态与 Action Tree 执行
 // ============================================================================
 
 export function getValue(p: ProjectData, state: WorldState, key: string): VarValue | undefined {
@@ -54,13 +54,10 @@ export function evalCondition(p: ProjectData, state: WorldState, t: ConditionDef
     ? t.conds.some((c) => evalCond(p, state, c))
     : t.conds.every((c) => evalCond(p, state, c));
 }
-export const evalTrigger = evalCondition;
 
 /** Action Tree 内部节点对所依赖 Condition 的判断规则 */
 export function evalConditionCheck(p: ProjectData, state: WorldState, check: ConditionCheck): boolean {
-  const condId = check.conditionId || check.triggerId;
-  const allConds = p.conditions || (p as any).triggers || [];
-  const cond = allConds.find((t: ConditionDef) => t.id === condId);
+  const cond = p.conditions.find((t) => t.id === check.conditionId);
   if (!cond) return false;
 
   // 自定义了比较符与比较值（如 金币 >= 100）
@@ -79,7 +76,6 @@ export function evalConditionCheck(p: ProjectData, state: WorldState, check: Con
   // 默认直接执行 Condition 主规则求值
   return evalCondition(p, state, cond);
 }
-export const evalTriggerCheck = evalConditionCheck;
 
 /** 评估事件当前预计执行的逻辑状态 (用于大图状态 Pill 展示) */
 export function getEventStatus(
@@ -108,7 +104,7 @@ export function getEventStatus(
   if (firstNode.type === 'selector') {
     let matched = false;
     for (const c of firstNode.cases) {
-      if (c.checks.length > 0 && c.checks.every((chk) => evalTriggerCheck(p, state, chk))) {
+      if (c.checks.length > 0 && c.checks.every((chk) => evalConditionCheck(p, state, chk))) {
         statusTitle = c.title;
         matched = true;
         break;
@@ -240,7 +236,7 @@ export function runActionGraph(ctx: RunContext, ev: EventDef): void {
         let matchedOptionIdx: number | undefined = undefined;
 
         for (const c of node.cases) {
-          const ok = c.checks.length > 0 && c.checks.every((chk) => evalTriggerCheck(p, ctx.getState(), chk));
+          const ok = c.checks.length > 0 && c.checks.every((chk) => evalConditionCheck(p, ctx.getState(), chk));
           if (ok) {
             matchedTargetId = c.targetId;
             matchedOptionIdx = c.defaultOptionIndex;
@@ -273,7 +269,7 @@ export function runActionGraph(ctx: RunContext, ev: EventDef): void {
             const ok =
               !o.checks ||
               o.checks.length === 0 ||
-              o.checks.every((chk) => evalTriggerCheck(p, ctx.getState(), chk));
+              o.checks.every((chk) => evalConditionCheck(p, ctx.getState(), chk));
             return {
               text: o.text,
               className: ok ? BTN_CLASS[o.style || 'primary'] : 'disabled-btn',

@@ -72,7 +72,7 @@ async function initApp(): Promise<void> {
           appState.select(null);
           appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]（Ctrl+Z 可撤销）`);
         }
-      } else if (sel.kind === 'condition' || sel.kind === 'trigger') {
+      } else if (sel.kind === 'condition') {
         const cond = project.getCondition(sel.id);
         if (cond) {
           project.deleteCondition(cond.id);

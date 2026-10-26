@@ -54,7 +54,7 @@ export class NodeInspector {
       const ev = project.getEvent(sel.id);
       if (ev) this.renderEventInspector(ev);
       else this.renderEmpty();
-    } else if (sel.kind === 'condition' || sel.kind === 'trigger') {
+    } else if (sel.kind === 'condition') {
       const cond = project.getCondition(sel.id);
       if (cond) this.renderConditionInspector(cond);
       else this.renderEmpty();
@@ -230,7 +230,7 @@ export class NodeInspector {
     });
 
     // 3. 依赖的前置条件 (Conditions) 管理
-    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incomingCondIds = ev.incomingConditions ?? [];
     const trigCard = document.createElement('div');
     trigCard.className = 'inspector-section';
     trigCard.innerHTML = `
@@ -249,7 +249,7 @@ export class NodeInspector {
             : incomingCondIds
                 .map((cid) => {
                   const cond = project.getCondition(cid);
-                  const title = cond ? cond.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
+                  const title = cond ? cond.title.replace(/^🔍 condition: /, '') : cid;
                   return `
               <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px; padding: 2px 6px;">
                 <span>🔍 ${this.escape(title)}</span>
@@ -271,7 +271,7 @@ export class NodeInspector {
         alert('项目中暂无更多可依赖的 Condition！');
         return;
       }
-      const names = available.map((t, idx) => `${idx + 1}. ${t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '')}`).join('\n');
+      const names = available.map((t, idx) => `${idx + 1}. ${t.title.replace(/^🔍 condition: /, '')}`).join('\n');
       const input = prompt(`请选择要让此 Event 依赖的 Condition (输入序号 1~${available.length})：\n\n${names}`);
       if (!input) return;
       const idx = parseInt(input.trim(), 10) - 1;
@@ -280,12 +280,9 @@ export class NodeInspector {
         project.change((d) => {
           const targetEv = d.events.find((x) => x.id === ev.id);
           if (targetEv) {
-            if (!targetEv.incomingConditions) targetEv.incomingConditions = targetEv.incomingTriggers ? [...targetEv.incomingTriggers] : [];
+            if (!targetEv.incomingConditions) targetEv.incomingConditions = [];
             if (!targetEv.incomingConditions.includes(chosen.id)) {
               targetEv.incomingConditions.push(chosen.id);
-            }
-            if (targetEv.incomingTriggers && !targetEv.incomingTriggers.includes(chosen.id)) {
-              targetEv.incomingTriggers.push(chosen.id);
             }
           }
         }, 'structure');
@@ -890,7 +887,7 @@ export class NodeInspector {
 
   // 3. Selector 多路条件分支节点编辑
   private renderSelectorNodeInspector(ev: EventDef, node: SelectorGraphNode): void {
-    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incomingCondIds = ev.incomingConditions ?? [];
 
     // 标题卡片
     const titleCard = document.createElement('div');
@@ -1092,7 +1089,7 @@ export class NodeInspector {
 
   // 4. Choice 玩家选项分流节点编辑
   private renderChoiceNodeInspector(ev: EventDef, node: ChoiceGraphNode): void {
-    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incomingCondIds = ev.incomingConditions ?? [];
 
     // 提问信息卡片
     const askCard = document.createElement('div');
@@ -1347,16 +1344,16 @@ export class NodeInspector {
 
   /** 渲染一条针对所依赖 Condition 的比较规则 (ConditionCheck) */
   private renderCheckRow(ev: EventDef, check: ConditionCheck, onDelete: () => void): HTMLElement {
-    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
+    const incomingCondIds = ev.incomingConditions ?? [];
     const row = document.createElement('div');
     row.style.cssText =
       'display:grid; grid-template-columns: 1fr 60px 70px 24px; gap:4px; align-items:center; margin-bottom:4px;';
 
-    const curCondId = check.conditionId || (check as any).triggerId;
+    const curCondId = check.conditionId;
     const condOptions = incomingCondIds
       .map((cid) => {
         const t = project.getCondition(cid);
-        const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
+        const title = t ? t.title.replace(/^🔍 condition: /, '') : cid;
         return `<option value="${cid}" ${cid === curCondId ? 'selected' : ''}>🔍 ${this.escape(title)}</option>`;
       })
       .join('');
@@ -1388,14 +1385,12 @@ export class NodeInspector {
             n.cases.forEach((c) => c.checks.forEach((chk) => {
               if (chk === check) {
                 chk.conditionId = v;
-                if ((chk as any).triggerId) (chk as any).triggerId = v;
               }
             }));
           } else if (n.type === 'choice') {
             n.options.forEach((o) => o.checks?.forEach((chk) => {
               if (chk === check) {
                 chk.conditionId = v;
-                if ((chk as any).triggerId) (chk as any).triggerId = v;
               }
             }));
           }
@@ -1450,7 +1445,7 @@ export class NodeInspector {
     metaCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <span class="event-type-badge" style="background:#1e1b4b; color:#c7d2fe; border: 1px solid rgba(99,102,241,0.5);">CONDITION 条件节点</span>
-        <button id="btnDeleteTrigger" class="btn-node-delete" title="删除此 Condition 节点 (快捷键: Delete)">
+        <button id="btnDeleteCondition" class="btn-node-delete" title="删除此 Condition 节点 (快捷键: Delete)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1476,20 +1471,18 @@ export class NodeInspector {
 
     this.bindInput(metaCard, '#trTitle', (v) => {
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.title = v;
       }, 'field', `tr_title_${tr.id}`);
     });
     this.bindInput(metaCard, '#trDesc', (v) => {
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.desc = v;
       }, 'field');
     });
 
-    const btnDel = metaCard.querySelector('#btnDeleteTrigger') as HTMLElement;
+    const btnDel = metaCard.querySelector('#btnDeleteCondition') as HTMLElement;
     btnDel.onclick = () => {
       project.deleteCondition(tr.id);
       appState.select(null);
@@ -1517,8 +1510,7 @@ export class NodeInspector {
     condCard.querySelector('#trMatch')?.addEventListener('change', (e) => {
       const m = (e.target as HTMLSelectElement).value as 'all' | 'any';
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.match = m;
       }, 'field');
     });
@@ -1527,8 +1519,7 @@ export class NodeInspector {
       const first = p.vars[0];
       if (!first) return;
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) {
           targetTr.conds.push({
             var: first.key,
@@ -1623,8 +1614,7 @@ export class NodeInspector {
     selVar.onchange = () => {
       const v = selVar.value;
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].var = v;
         }
@@ -1635,8 +1625,7 @@ export class NodeInspector {
     selOp.onchange = () => {
       const op = selOp.value as CmpCond['op'];
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].op = op;
         }
@@ -1651,8 +1640,7 @@ export class NodeInspector {
       else if (txt === 'false') val = false;
       else if (!isNaN(Number(txt)) && txt !== '') val = Number(txt);
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].value = val;
         }
@@ -1661,8 +1649,7 @@ export class NodeInspector {
 
     row.querySelector('.btn-del-cond')?.addEventListener('click', () => {
       project.change((d) => {
-        const allConds = d.conditions || (d as any).triggers || [];
-        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
+        const targetTr = d.conditions.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) {
           targetTr.conds.splice(cIdx, 1);
         }

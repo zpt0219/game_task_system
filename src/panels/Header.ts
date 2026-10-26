@@ -30,7 +30,7 @@ export class Header {
     this.undoBtn = document.getElementById('btnUndo') as HTMLButtonElement;
     this.redoBtn = document.getElementById('btnRedo') as HTMLButtonElement;
     this.addEventBtn = document.getElementById('btnAddEventHeader') as HTMLButtonElement;
-    this.addConditionBtn = (document.getElementById('btnAddConditionHeader') || document.getElementById('btnAddTriggerHeader')) as HTMLButtonElement;
+    this.addConditionBtn = document.getElementById('btnAddConditionHeader') as HTMLButtonElement;
     this.mainGraphTools = document.getElementById('mainGraphTools');
     this.subGraphTools = document.getElementById('subGraphTools');
     this.addActionBtn = document.getElementById('btnAddActionHeader') as HTMLButtonElement | null;
@@ -167,7 +167,7 @@ export class Header {
 
   private setupNodeDragCreation(
     btn: HTMLButtonElement,
-    type: 'event' | 'condition' | 'trigger'
+    type: 'event' | 'condition'
   ): void {
     let isMouseDown = false;
     let isDragging = false;
@@ -312,7 +312,7 @@ export class Header {
         this.canvas.createNodeAtCenter(type);
       } else {
         if (type === 'event' && this.onAddEvent) this.onAddEvent();
-        if ((type === 'condition' || type === 'trigger') && this.onAddCondition) this.onAddCondition();
+        if (type === 'condition' && this.onAddCondition) this.onAddCondition();
       }
     });
   }

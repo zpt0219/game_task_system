@@ -1,5 +1,5 @@
 // ============================================================================
-// 数据模型：两大节点（Event / Trigger）+ 状态变量（Var）
+// 数据模型：两大节点（Event / Condition）+ 状态变量（Var）
 // 所有内容均为纯 JSON 数据，存储在 data/castle.json，可在编辑器中增删改。
 // ============================================================================
 
@@ -41,8 +41,6 @@ export interface ConditionDef {
   match: 'all' | 'any';
   conds: CmpCond[];
 }
-/** 别名兼容 */
-export type TriggerDef = ConditionDef;
 
 export type ButtonStyle = 'primary' | 'secondary' | 'danger';
 
@@ -99,10 +97,7 @@ export interface ConditionCheck {
   conditionId: string; // 必须属于当前 Event 所依赖的 incomingConditions
   op?: CompareOp;      // 比较符（如 '==', '!=', '>=', '<='），默认使用 Condition 主条件的比较符
   value?: VarValue;    // 比较阈值（如 true, false, 100, 10）
-  triggerId?: string;  // 兼容旧字段
 }
-/** 别名兼容 */
-export type TriggerCheck = ConditionCheck;
 
 /** 1. 入口节点 (Start) */
 export interface StartGraphNode {
@@ -189,7 +184,6 @@ export interface EventDef {
   x: number;
   y: number;
   incomingConditions?: string[]; // 连入此 Event 所依赖的 Condition ID 列表
-  incomingTriggers?: string[];   // 兼容字段
   actionGraph: ActionGraph;      // 事件内部 Action Tree 有向流图
 }
 
@@ -204,7 +198,6 @@ export interface ProjectData {
   name: string;
   vars: VarDef[];
   conditions: ConditionDef[];    // 全局 Condition 条件节点 (描述事件所依赖的前置条件)
-  triggers?: ConditionDef[];     // 兼容字段
   events: EventDef[];
   presets: PresetDef[];
 }
@@ -212,13 +205,12 @@ export interface ProjectData {
 /** 运行时世界状态：变量 key -> 当前值 */
 export type WorldState = Record<string, VarValue>;
 
-export type NodeKind = 'event' | 'condition' | 'trigger';
+export type NodeKind = 'event' | 'condition';
 
 /** 当前选中项 */
 export type Selection =
   | { kind: 'event'; id: string }
   | { kind: 'condition'; id: string }
-  | { kind: 'trigger'; id: string }
   | { kind: 'var'; id: string }
   | { kind: 'subnode'; id: string; eventId: string }
   | null;
