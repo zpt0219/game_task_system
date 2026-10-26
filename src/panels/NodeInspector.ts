@@ -1,19 +1,19 @@
 import {
-  Branch,
-  ChoiceOption,
-  ChoiceStep,
   CmpCond,
   EventDef,
-  SayStep,
-  SetStep,
-  AddStep,
-  Step,
   TriggerDef,
-  VarDef
+  VarDef,
+  ActionGraphNodeUnion,
+  StartGraphNode,
+  SelectorGraphNode,
+  ChoiceGraphNode,
+  ActionGraphNode,
+  AtomicStep,
+  TriggerCheck
 } from '../core/types';
 import { project, uid } from '../core/project';
 import { appState } from '../core/state';
-import { evalCond, evalTrigger, matchBranch, runEvent } from '../core/engine';
+import { evalCond, evalTrigger, getEventStatus, runEvent } from '../core/engine';
 import { varWriters, varReaders, eventsControlledBy, varsWrittenBy } from '../core/graph';
 import { RpgDialog } from './RpgDialog';
 
@@ -45,7 +45,12 @@ export class NodeInspector {
       return;
     }
 
-    if (sel.kind === 'event') {
+    if (sel.kind === 'subnode') {
+      const ev = project.getEvent(sel.eventId);
+      const node = project.getGraphNode(sel.eventId, sel.id);
+      if (ev && node) this.renderSubNodeInspector(ev, node);
+      else this.renderEmpty();
+    } else if (sel.kind === 'event') {
       const ev = project.getEvent(sel.id);
       if (ev) this.renderEventInspector(ev);
       else this.renderEmpty();
@@ -103,7 +108,44 @@ export class NodeInspector {
   private renderEventInspector(ev: EventDef): void {
     const p = project.get();
     const state = appState.getState();
-    const activeBranch = matchBranch(p, state, ev);
+    const evStatus = getEventStatus(p, state, ev);
+
+    // 0. Action Tree 内部图谱入口卡片
+    const subNodeCount = ev.actionGraph?.nodes?.length || 0;
+    const isInsideSubGraph = appState.getSubGraphEventId() === ev.id;
+    const treeCard = document.createElement('div');
+    treeCard.className = 'inspector-section';
+    treeCard.style.border = '1px solid #8b5cf6';
+    treeCard.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(30, 27, 75, 0.4) 100%)';
+    treeCard.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 12px; font-weight: 700; color: #c084fc;">🕸️ Action Tree (内部有向流图)</span>
+        <span class="status-pill status-blue" style="font-size: 10px;">${subNodeCount} 个节点</span>
+      </div>
+      <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 10px; line-height: 1.5;">
+        ${
+          isInsideSubGraph
+            ? '当前已处于该事件的 Action Tree 内部子图视图。'
+            : '事件内部由 Start、Selector、Choice、Action 节点组成可视化流图，支持条件分流、玩家选项与循环回跳。'
+        }
+      </div>
+      ${
+        isInsideSubGraph
+          ? `<button id="btnExitSubGraph" class="mini-btn" style="width: 100%; padding: 6px; background: #334155; color: #f8fafc; border: none; border-radius: 4px; cursor: pointer;">← 返回全局大图 (ESC)</button>`
+          : `<button id="btnEnterSubGraph" class="dialog-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #fff; font-weight: 700; border: none; border-radius: 6px; cursor: pointer;">
+              <span>🕸️</span> 进入 Action Tree 内部图谱
+            </button>`
+      }
+    `;
+    this.container.appendChild(treeCard);
+
+    treeCard.querySelector('#btnEnterSubGraph')?.addEventListener('click', () => {
+      appState.setSubGraphEventId(ev.id);
+      appState.log(`🕸️ 已进入「${ev.title}」内部 Action Tree 图谱`, true);
+    });
+    treeCard.querySelector('#btnExitSubGraph')?.addEventListener('click', () => {
+      appState.setSubGraphEventId(null);
+    });
 
     // 1. 基础信息卡片
     const metaCard = document.createElement('div');
@@ -132,16 +174,22 @@ export class NodeInspector {
     this.container.appendChild(metaCard);
 
     this.bindInput(metaCard, '#evTitle', (v) => {
-      ev.title = v;
-      project.change(() => {}, 'field', `ev_title_${ev.id}`);
+      project.change((d) => {
+        const target = d.events.find((e) => e.id === ev.id);
+        if (target) target.title = v;
+      }, 'field', `ev_title_${ev.id}`);
     });
     this.bindInput(metaCard, '#evSourceRef', (v) => {
-      ev.sourceRef = v;
-      project.change(() => {}, 'field');
+      project.change((d) => {
+        const target = d.events.find((e) => e.id === ev.id);
+        if (target) target.sourceRef = v;
+      }, 'field');
     });
     this.bindInput(metaCard, '#evDesc', (v) => {
-      ev.desc = v;
-      project.change(() => {}, 'field');
+      project.change((d) => {
+        const target = d.events.find((e) => e.id === ev.id);
+        if (target) target.desc = v;
+      }, 'field');
     });
 
     const btnDel = metaCard.querySelector('#btnDeleteEvent') as HTMLElement;
@@ -156,13 +204,13 @@ export class NodeInspector {
     playCard.className = 'inspector-section';
     playCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-size: 11px; color: #94a3b8;">当前匹配分支：</span>
-        <span class="event-status-pill ${activeBranch ? 'status-green' : 'status-red'}" style="font-size: 11px;">
-          ${activeBranch ? activeBranch.title : '无匹配分支'}
+        <span style="font-size: 11px; color: #94a3b8;">预计执行逻辑：</span>
+        <span class="event-status-pill ${evStatus.colorClass}" style="font-size: 11px;">
+          ${evStatus.title}
         </span>
       </div>
       <button id="btnPlayEvent" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;">
-        <span>▶</span> 触发执行 (Play ActionSequence)
+        <span>▶</span> 触发执行 (Play Action Tree)
       </button>
     `;
     this.container.appendChild(playCard);
@@ -181,7 +229,7 @@ export class NodeInspector {
     });
 
     // 3. 连入的 Trigger 管理 (输入信号)
-    const incomingTrigIds = ev.incomingTriggers ?? Array.from(new Set(ev.branches.flatMap((b) => b.when)));
+    const incomingTrigIds = ev.incomingTriggers ?? [];
     const trigCard = document.createElement('div');
     trigCard.className = 'inspector-section';
     trigCard.innerHTML = `
@@ -230,7 +278,7 @@ export class NodeInspector {
         project.change((d) => {
           const targetEv = d.events.find((x) => x.id === ev.id);
           if (targetEv) {
-            if (!targetEv.incomingTriggers) targetEv.incomingTriggers = [...incomingTrigIds];
+            if (!targetEv.incomingTriggers) targetEv.incomingTriggers = [];
             if (!targetEv.incomingTriggers.includes(chosen.id)) {
               targetEv.incomingTriggers.push(chosen.id);
             }
@@ -244,71 +292,46 @@ export class NodeInspector {
       btn.addEventListener('click', () => {
         const tid = (btn as HTMLElement).dataset.tid;
         if (!tid) return;
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          if (targetEv) {
-            targetEv.incomingTriggers = (targetEv.incomingTriggers ?? incomingTrigIds).filter((t) => t !== tid);
-            targetEv.branches.forEach((b) => {
-              b.when = b.when.filter((w) => w !== tid);
-            });
-          }
-        }, 'structure');
+        project.disconnectTrigger(ev.id, tid);
       });
     });
 
-    // 4. ActionSequence 分支列表
-    const branchesCard = document.createElement('div');
-    branchesCard.className = 'inspector-section';
-    branchesCard.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px;">
-        <div class="inspector-label" style="margin-bottom: 0; white-space: nowrap; font-size: 12px; font-weight: 700;">
-          ActionSequence 分支 (${ev.branches.length} 项)
-        </div>
-        <div style="display: flex; gap: 6px; flex-shrink: 0;">
-          ${
-            incomingTrigIds.length > 0
-              ? `<button id="btnAddCondBranch" class="mini-btn-action">+ 条件行为</button>`
-              : ''
-          }
-          <button id="btnAddDefaultBranch" class="mini-btn">+ 默认行为</button>
+    // 4. Action Tree 内部节点概览
+    const nodes = ev.actionGraph?.nodes || [];
+    const overviewCard = document.createElement('div');
+    overviewCard.className = 'inspector-section';
+    overviewCard.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="inspector-label" style="margin-bottom: 0; font-size: 12px; font-weight: 700;">
+          Action Tree 节点 (${nodes.length} 个)
         </div>
       </div>
-      <div id="branchesContainer"></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        ${nodes.map((n) => {
+          const icon = n.type === 'start' ? '▶' : n.type === 'action' ? '🎬' : n.type === 'selector' ? '🔀' : '💬';
+          const title = 'title' in n ? (n as any).title : 'Start 入口';
+          return `
+            <div class="subnode-overview-item" data-nid="${n.id}" style="display: flex; justify-content: space-between; align-items: center; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 5px 8px; cursor: pointer; font-size: 11px;">
+              <span style="color: #f1f5f9; display: flex; align-items: center; gap: 6px;">
+                <span>${icon}</span>
+                <span style="font-weight: 600;">${this.escape(title)}</span>
+              </span>
+              <span style="color: #64748b; font-family: monospace; font-size: 10px;">${n.id}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
     `;
-    this.container.appendChild(branchesCard);
+    this.container.appendChild(overviewCard);
 
-    branchesCard.querySelector('#btnAddCondBranch')?.addEventListener('click', () => {
-      project.change((d) => {
-        const targetEv = d.events.find((x) => x.id === ev.id);
-        if (targetEv) {
-          targetEv.branches.unshift({
-            id: uid('b'),
-            title: `条件行为 ${targetEv.branches.length + 1}`,
-            when: incomingTrigIds.length > 0 ? [incomingTrigIds[0]] : [],
-            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写条件触发台词...', button: '继续' }]
-          });
+    overviewCard.querySelectorAll('.subnode-overview-item').forEach((item) => {
+      (item as HTMLElement).onclick = () => {
+        const nid = (item as HTMLElement).dataset.nid;
+        if (nid) {
+          appState.setSubGraphEventId(ev.id);
+          appState.select({ kind: 'subnode', id: nid, eventId: ev.id });
         }
-      }, 'structure');
-    });
-
-    branchesCard.querySelector('#btnAddDefaultBranch')?.addEventListener('click', () => {
-      project.change((d) => {
-        const targetEv = d.events.find((x) => x.id === ev.id);
-        if (targetEv) {
-          targetEv.branches.push({
-            id: uid('b'),
-            title: `默认行为`,
-            when: [],
-            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写默认台词...', button: '继续' }]
-          });
-        }
-      }, 'structure');
-    });
-
-    const bContainer = branchesCard.querySelector('#branchesContainer') as HTMLElement;
-    ev.branches.forEach((b, bIdx) => {
-      const bEl = this.renderBranchCard(ev, b, bIdx, activeBranch?.id === b.id, incomingTrigIds);
-      bContainer.appendChild(bEl);
+      };
     });
 
     // 5. 关联影响摘要
@@ -347,463 +370,1055 @@ export class NodeInspector {
     });
   }
 
-  private renderBranchCard(
-    ev: EventDef,
-    b: Branch,
-    bIdx: number,
-    isActive: boolean,
-    incomingTrigIds: string[]
-  ): HTMLElement {
-    const p = project.get();
-    const isDefaultBranch = b.when.length === 0;
-    const card = document.createElement('div');
-    card.className = `branch-card ${isActive ? 'active-branch' : ''}`;
-    card.style.cssText = `
-      background: #0f172a;
-      border: 1px solid ${isActive ? '#10b981' : '#334155'};
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 10px;
-      box-shadow: ${isActive ? '0 0 10px rgba(16, 185, 129, 0.25)' : 'none'};
-    `;
+  // ------------------------------------------------------------------ Action Tree 子图节点编辑
 
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
-          <span style="font-size: 11px; color: ${isActive ? '#10b981' : '#64748b'}; font-weight: 700; flex-shrink: 0;">#${bIdx + 1}</span>
-          <input type="text" class="branch-title-input" value="${this.escape(b.title)}" placeholder="分支标题" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; color: #f8fafc; font-size: 13px; font-weight: 700; outline: none;" />
-        </div>
-        <div style="display: flex; gap: 4px; flex-shrink: 0;">
-          <button class="mini-btn btn-move-up" title="上移" ${bIdx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="mini-btn btn-move-down" title="下移" ${bIdx === ev.branches.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="mini-btn danger-btn btn-del-branch" title="删除分支">×</button>
-        </div>
-      </div>
+  private renderSubNodeInspector(ev: EventDef, node: ActionGraphNodeUnion): void {
+    // 1. 顶部导航与元信息
+    const topCard = document.createElement('div');
+    topCard.className = 'inspector-section';
+    const typeBadges: Record<string, { label: string; bg: string; color: string }> = {
+      start: { label: 'START 入口节点', bg: '#082f49', color: '#38bdf8' },
+      action: { label: 'ACTION 复合动作节点', bg: '#064e3b', color: '#34d399' },
+      selector: { label: 'SELECTOR 多路分支节点', bg: '#3b0764', color: '#c084fc' },
+      choice: { label: 'CHOICE 玩家选项节点', bg: '#451a03', color: '#fbbf24' }
+    };
+    const tb = typeBadges[node.type] || { label: node.type, bg: '#334155', color: '#f8fafc' };
 
-      <!-- 触发条件 / 默认行为展示 -->
-      ${
-        isDefaultBranch
-          ? `
-        <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-            <span style="flex-shrink: 0;">🛡️</span>
-            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><b>默认行为</b> (无前置条件 / 保底执行)</span>
-          </div>
-          ${
-            incomingTrigIds.length > 0
-              ? `<button class="mini-btn btn-turn-into-cond" style="font-size: 10px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;">转为条件行为</button>`
-              : ''
-          }
-        </div>
-      `
-          : `
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 6px;">
-            <div style="font-size: 10px; font-weight: 700; color: #38bdf8; text-transform: uppercase; white-space: nowrap;">
-              ⚡ 触发条件 (需满足勾选的连入 Trigger)
-            </div>
-            <button class="mini-btn btn-turn-into-default" style="font-size: 10px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0;">转为默认行为</button>
-          </div>
-          <div class="branch-triggers-wrap" style="display: flex; flex-wrap: wrap; gap: 6px;">
-            ${
-              incomingTrigIds.length === 0
-                ? '<span style="font-size: 10px; color: #64748b;">当前无连入 Trigger，请在上方为该 Event 添加连入 Trigger</span>'
-                : incomingTrigIds
-                    .map((tid) => {
-                      const t = p.triggers.find((x) => x.id === tid);
-                      const checked = b.when.includes(tid);
-                      const title = t ? t.title.replace('⚡ trigger: ', '') : tid;
-                      return `
-                  <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: ${checked ? '#1e293b' : 'transparent'}; border: 1px solid ${checked ? '#38bdf8' : '#334155'}; border-radius: 4px; padding: 2px 6px; cursor: pointer; color: ${checked ? '#38bdf8' : '#94a3b8'};">
-                    <input type="checkbox" class="chk-trigger" data-tid="${tid}" ${checked ? 'checked' : ''} style="margin: 0; cursor: pointer;" />
-                    <span>${this.escape(title)}</span>
-                  </label>
-                `;
-                    })
-                    .join('')
-            }
-          </div>
-        </div>
-      `
-      }
-
-      <!-- 步骤列表 -->
-      <div class="steps-container"></div>
-
-      <!-- 添加步骤工具条 (网格 4 列排列，绝不折行成单字) -->
-      <div class="step-add-toolbar">
-        <button class="step-add-pill btn-add-step" data-type="say">💬 对话</button>
-        <button class="step-add-pill btn-add-step" data-type="choice">🔀 选项</button>
-        <button class="step-add-pill btn-add-step" data-type="set">📝 赋值</button>
-        <button class="step-add-pill btn-add-step" data-type="add">➕ 增减</button>
-      </div>
-    `;
-
-    // 绑定分支类型转换
-    card.querySelector('.btn-turn-into-default')?.addEventListener('click', () => {
-      project.change((d) => {
-        const targetEv = d.events.find((x) => x.id === ev.id);
-        const targetB = targetEv?.branches.find((x) => x.id === b.id);
-        if (targetB) {
-          targetB.when = [];
+    topCard.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="event-type-badge" style="background:${tb.bg}; color:${tb.color}; font-weight:700;">
+          ${tb.label}
+        </span>
+        ${
+          node.type !== 'start'
+            ? `<button id="btnDeleteSubNode" class="btn-node-delete" title="删除此子图节点">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>删除节点</span>
+              </button>`
+            : '<span style="font-size:10px; color:#64748b;">固定起点不可删除</span>'
         }
-      }, 'structure');
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #94a3b8; background: #0f172a; padding: 6px 10px; border-radius: 6px; border: 1px solid #1e293b;">
+        <span>所属事件：<b>${this.escape(ev.title)}</b></span>
+        <button id="btnBackToEventMeta" class="mini-btn" style="font-size: 10px; padding: 2px 6px;">检视事件主体</button>
+      </div>
+    `;
+    this.container.appendChild(topCard);
+
+    topCard.querySelector('#btnBackToEventMeta')?.addEventListener('click', () => {
+      appState.select({ kind: 'event', id: ev.id });
     });
 
-    card.querySelector('.btn-turn-into-cond')?.addEventListener('click', () => {
-      if (incomingTrigIds.length > 0) {
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          const targetB = targetEv?.branches.find((x) => x.id === b.id);
-          if (targetB) {
-            targetB.when = [incomingTrigIds[0]];
-          }
-        }, 'structure');
-      }
-    });
+    if (node.type !== 'start') {
+      topCard.querySelector('#btnDeleteSubNode')?.addEventListener('click', () => {
+        project.deleteGraphNode(ev.id, node.id);
+        appState.select({ kind: 'event', id: ev.id });
+        appState.log(`🗑️ 已删除 Action Tree 节点：${node.id}`);
+      });
+    }
 
-    // 绑定分支标题修改
-    const titleInp = card.querySelector('.branch-title-input') as HTMLInputElement;
-    titleInp.oninput = () => {
-      b.title = titleInp.value;
-      project.change(() => {}, 'field', `b_title_${b.id}`);
+    // 根据 4 类节点分别渲染
+    switch (node.type) {
+      case 'start':
+        this.renderStartNodeInspector(ev, node);
+        break;
+      case 'action':
+        this.renderActionNodeInspector(ev, node);
+        break;
+      case 'selector':
+        this.renderSelectorNodeInspector(ev, node);
+        break;
+      case 'choice':
+        this.renderChoiceNodeInspector(ev, node);
+        break;
+    }
+  }
+
+  /** 通用流向目标选择控件 (连向 Choice 节点时支持配置默认选中选项) */
+  private renderTargetSelectUI(
+    ev: EventDef,
+    currentNextId: string | undefined,
+    currentDefaultOptionIndex: number | undefined,
+    onTargetChange: (targetId?: string, defaultOptionIndex?: number) => void
+  ): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.style.cssText =
+      'background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 8px; margin-top: 6px;';
+
+    const nodes = ev.actionGraph?.nodes || [];
+    const targetNode = nodes.find((n) => n.id === currentNextId);
+
+    const selectOptions = [
+      '<option value="">(无 / 流程结束)</option>',
+      ...nodes
+        .filter((n) => n.type !== 'start')
+        .map((n) => {
+          const title = 'title' in n ? n.title : (n as ActionGraphNodeUnion).id;
+          const typePrefix = n.type === 'action' ? '🎬' : n.type === 'selector' ? '🔀' : '💬';
+          return `<option value="${n.id}" ${n.id === currentNextId ? 'selected' : ''}>${typePrefix} ${this.escape(
+            title
+          )} (${n.id})</option>`;
+        })
+    ].join('');
+
+    let choiceOptionsHtml = '';
+    if (targetNode && targetNode.type === 'choice') {
+      const curIdx = currentDefaultOptionIndex ?? 0;
+      const opts = targetNode.options
+        .map(
+          (o, idx) =>
+            `<option value="${idx}" ${idx === curIdx ? 'selected' : ''}>[${idx}] ${this.escape(o.text)}</option>`
+        )
+        .join('');
+
+      choiceOptionsHtml = `
+        <div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
+            <span style="font-size:10px; color:#fbbf24; font-weight:700;">🎯 连入 Choice 默认高亮选项：</span>
+            <span style="font-size:9px; color:#94a3b8;">(默认最上面 index: 0)</span>
+          </div>
+          <select class="choice-default-select inspector-select" style="width:100%; font-size:11px;">
+            ${opts || '<option value="0">[0] 默认第一项</option>'}
+          </select>
+        </div>
+      `;
+    }
+
+    wrap.innerHTML = `
+      <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+        <span>Out 输出端口连向：</span>
+        ${
+          currentNextId
+            ? `<span style="font-size: 10px; color: #34d399;">● 已连入</span>`
+            : '<span style="font-size: 10px; color: #64748b;">未连线</span>'
+        }
+      </div>
+      <select class="target-node-select inspector-select" style="width: 100%; font-size: 11px;">
+        ${selectOptions}
+      </select>
+      ${choiceOptionsHtml}
+    `;
+
+    const selEl = wrap.querySelector('.target-node-select') as HTMLSelectElement;
+    selEl.onchange = () => {
+      const val = selEl.value || undefined;
+      const newTarget = nodes.find((n) => n.id === val);
+      const defaultOptIdx = newTarget?.type === 'choice' ? 0 : undefined;
+      onTargetChange(val, defaultOptIdx);
     };
 
-    // 分支上下移动与删除
-    card.querySelector('.btn-move-up')?.addEventListener('click', () => {
-      if (bIdx > 0) {
+    const choiceSelEl = wrap.querySelector('.choice-default-select') as HTMLSelectElement | null;
+    if (choiceSelEl) {
+      choiceSelEl.onchange = () => {
+        const idx = parseInt(choiceSelEl.value, 10);
+        onTargetChange(currentNextId, isNaN(idx) ? 0 : idx);
+      };
+    }
+
+    return wrap;
+  }
+
+  // 1. Start 节点编辑
+  private renderStartNodeInspector(ev: EventDef, node: StartGraphNode): void {
+    const card = document.createElement('div');
+    card.className = 'inspector-section';
+    card.innerHTML = `
+      <div class="inspector-label">入口流程说明</div>
+      <div style="font-size: 11px; color: #94a3b8; line-height: 1.5; margin-bottom: 10px;">
+        Start 节点固定为事件触发时的唯一起点，负责引导控制流走向第一个执行的节点。
+      </div>
+      <div class="inspector-label">起点流向 (Next)</div>
+    `;
+
+    const targetUI = this.renderTargetSelectUI(
+      ev,
+      node.nextId,
+      node.defaultOptionIndex,
+      (targetId, defaultOptionIndex) => {
         project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          if (targetEv) {
-            const temp = targetEv.branches[bIdx];
-            targetEv.branches[bIdx] = targetEv.branches[bIdx - 1];
-            targetEv.branches[bIdx - 1] = temp;
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'start') {
+            targetNode.nextId = targetId;
+            targetNode.defaultOptionIndex = defaultOptionIndex;
           }
         }, 'structure');
       }
-    });
+    );
+    card.appendChild(targetUI);
+    this.container.appendChild(card);
+  }
 
-    card.querySelector('.btn-move-down')?.addEventListener('click', () => {
-      if (bIdx < ev.branches.length - 1) {
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          if (targetEv) {
-            const temp = targetEv.branches[bIdx];
-            targetEv.branches[bIdx] = targetEv.branches[bIdx + 1];
-            targetEv.branches[bIdx + 1] = temp;
-          }
-        }, 'structure');
-      }
-    });
+  // 2. Action 复合动作节点编辑
+  private renderActionNodeInspector(ev: EventDef, node: ActionGraphNode): void {
+    const p = project.get();
 
-    card.querySelector('.btn-del-branch')?.addEventListener('click', () => {
+    // 标题卡片
+    const titleCard = document.createElement('div');
+    titleCard.className = 'inspector-section';
+    titleCard.innerHTML = `
+      <div class="inspector-label">节点名称 (Title)</div>
+      <input type="text" id="actionTitle" class="inspector-input" value="${this.escape(
+        node.title || ''
+      )}" placeholder="例: 强化攻击" style="width: 100%; box-sizing: border-box;" />
+    `;
+    this.container.appendChild(titleCard);
+
+    this.bindInput(titleCard, '#actionTitle', (v) => {
       project.change((d) => {
-        const targetEv = d.events.find((x) => x.id === ev.id);
-        if (targetEv) {
-          targetEv.branches = targetEv.branches.filter((x) => x.id !== b.id);
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'action') {
+          targetNode.title = v;
         }
-      }, 'structure');
-      appState.log(`🗑️ 已删除分支：[${b.title}]（Ctrl+Z 可撤销）`);
+      }, 'field', `sub_title_${node.id}`);
     });
 
-    // 勾选 Trigger 依赖
-    card.querySelectorAll('.chk-trigger').forEach((chk) => {
-      chk.addEventListener('change', () => {
-        const tid = (chk as HTMLElement).dataset.tid;
-        if (!tid) return;
+    // 后续流向卡片 (Out 连线，可连向后续或回跳形成循环)
+    const outCard = document.createElement('div');
+    outCard.className = 'inspector-section';
+    outCard.innerHTML = `
+      <div class="inspector-label">后续控制流 (Out 连线，可连向后续节点或回跳循环)</div>
+    `;
+    const targetUI = this.renderTargetSelectUI(
+      ev,
+      node.nextId,
+      node.defaultOptionIndex,
+      (targetId, defaultOptionIndex) => {
         project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          const targetB = targetEv?.branches.find((x) => x.id === b.id);
-          if (targetB) {
-            const isChecked = (chk as HTMLInputElement).checked;
-            if (isChecked && !targetB.when.includes(tid)) {
-              targetB.when.push(tid);
-            } else if (!isChecked) {
-              targetB.when = targetB.when.filter((w) => w !== tid);
-            }
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            targetNode.nextId = targetId;
+            targetNode.defaultOptionIndex = defaultOptionIndex;
           }
         }, 'structure');
-      });
+      }
+    );
+    outCard.appendChild(targetUI);
+    this.container.appendChild(outCard);
+
+    // 内部顺序步骤卡片
+    const stepsCard = document.createElement('div');
+    stepsCard.className = 'inspector-section';
+    stepsCard.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div class="inspector-label" style="margin-bottom:0;">
+          顺序执行步骤 (${node.steps.length} 步)
+        </div>
+      </div>
+      <div id="subStepsContainer"></div>
+      <div class="step-add-toolbar" style="margin-top:10px;">
+        <button class="step-add-pill btn-add-substep" data-type="say">💬 对话</button>
+        <button class="step-add-pill btn-add-substep" data-type="set">📝 赋值</button>
+        <button class="step-add-pill btn-add-substep" data-type="add">➕ 增减</button>
+      </div>
+    `;
+    this.container.appendChild(stepsCard);
+
+    const stepsContainer = stepsCard.querySelector('#subStepsContainer') as HTMLElement;
+    node.steps.forEach((step, sIdx) => {
+      const stepEl = this.renderAtomicStepCard(ev, node, step, sIdx);
+      stepsContainer.appendChild(stepEl);
     });
 
-    // 渲染步骤
-    const stepsCont = card.querySelector('.steps-container') as HTMLElement;
-    b.steps.forEach((st, stIdx) => {
-      const stEl = this.renderStepCard(ev, b, st, stIdx);
-      stepsCont.appendChild(stEl);
-    });
-
-    // 添加步骤
-    card.querySelectorAll('.btn-add-step').forEach((btn) => {
+    stepsCard.querySelectorAll('.btn-add-substep').forEach((btn) => {
       btn.addEventListener('click', () => {
         const type = (btn as HTMLElement).dataset.type;
         project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          const targetB = targetEv?.branches.find((x) => x.id === b.id);
-          if (!targetB) return;
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (!targetNode || targetNode.type !== 'action') return;
+
           if (type === 'say') {
-            targetB.steps.push({ type: 'say', speaker: '旁白', avatar: '💬', text: '新台词...', button: '继续' });
-          } else if (type === 'choice') {
-            targetB.steps.push({
-              type: 'choice',
-              speaker: 'NPC',
+            targetNode.steps.push({
+              type: 'say',
+              speaker: '旁白',
               avatar: '💬',
-              text: '请做出选择：',
-              options: [
-                { text: '选项 A', style: 'primary', steps: [] },
-                { text: '选项 B', style: 'secondary', steps: [] }
-              ]
+              text: '编写台词文本...',
+              button: '继续'
             });
           } else if (type === 'set') {
-            const first = d.vars[0];
-            targetB.steps.push({ type: 'set', var: first ? first.key : 'items.book', value: true });
+            const first = p.vars[0];
+            targetNode.steps.push({
+              type: 'set',
+              var: first ? first.key : 'hero.gold',
+              value: first ? first.initial : 0
+            });
           } else if (type === 'add') {
-            const gold = d.vars.find((v) => v.kind === 'number') || d.vars[0];
-            targetB.steps.push({ type: 'add', var: gold ? gold.key : 'hero.gold', amount: 10 });
+            const firstNum = p.vars.find((v) => v.kind === 'number');
+            targetNode.steps.push({
+              type: 'add',
+              var: firstNum ? firstNum.key : 'hero.gold',
+              amount: 10
+            });
           }
         }, 'structure');
       });
+    });
+  }
+
+  /** 渲染 Action 内部的原子步骤项 (Say / Set / Add) */
+  private renderAtomicStepCard(
+    ev: EventDef,
+    node: ActionGraphNode,
+    step: AtomicStep,
+    sIdx: number
+  ): HTMLElement {
+    const p = project.get();
+    const card = document.createElement('div');
+    card.className = 'step-card';
+    card.style.cssText =
+      'background: #080e1a; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px; margin-bottom: 8px;';
+
+    const badges: Record<string, string> = {
+      say: '<span style="color:#60a5fa; font-weight:700;">💬 对话 (say)</span>',
+      set: '<span style="color:#34d399; font-weight:700;">📝 赋值 (set)</span>',
+      add: '<span style="color:#fbbf24; font-weight:700;">➕ 增减 (add)</span>'
+    };
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px;">
+          <span style="color:#64748b; font-weight:700;">#${sIdx + 1}</span>
+          ${badges[step.type]}
+        </div>
+        <div style="display:flex; gap:3px;">
+          <button class="mini-btn btn-substep-up" ${sIdx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="mini-btn btn-substep-down" ${sIdx === node.steps.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="mini-btn danger-btn btn-substep-del">×</button>
+        </div>
+      </div>
+      <div class="step-body"></div>
+    `;
+
+    const body = card.querySelector('.step-body') as HTMLElement;
+
+    if (step.type === 'say') {
+      body.innerHTML = `
+        <div style="display:grid; grid-template-columns: 60px 1fr; gap:6px; margin-bottom:6px;">
+          <input type="text" class="say-avatar inspector-input" value="${this.escape(
+            step.avatar || '💬'
+          )}" placeholder="头像" style="text-align:center; font-size:16px;" />
+          <input type="text" class="say-speaker inspector-input" value="${this.escape(
+            step.speaker
+          )}" placeholder="说话人" />
+        </div>
+        <textarea class="say-text inspector-textarea" style="width:100%; height:50px; resize:vertical; margin-bottom:6px; box-sizing:border-box;">${this.escape(
+          step.text
+        )}</textarea>
+        <input type="text" class="say-button inspector-input" value="${this.escape(
+          step.button || '继续'
+        )}" placeholder="确认按钮文案 (如: 继续)" style="width:100%; box-sizing:border-box;" />
+      `;
+      this.bindInput(body, '.say-avatar', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'say') s.avatar = v;
+          }
+        }, 'field', `say_avatar_${node.id}_${sIdx}`);
+      });
+      this.bindInput(body, '.say-speaker', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'say') s.speaker = v;
+          }
+        }, 'field', `say_speaker_${node.id}_${sIdx}`);
+      });
+      this.bindInput(body, '.say-text', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'say') s.text = v;
+          }
+        }, 'field', `say_text_${node.id}_${sIdx}`);
+      });
+      this.bindInput(body, '.say-button', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'say') s.button = v;
+          }
+        }, 'field', `say_btn_${node.id}_${sIdx}`);
+      });
+    } else if (step.type === 'set') {
+      const varOptions = p.vars
+        .map((v) => `<option value="${v.key}" ${v.key === step.var ? 'selected' : ''}>${v.icon} ${v.label} (${v.key})</option>`)
+        .join('');
+
+      body.innerHTML = `
+        <div style="margin-bottom:6px;">
+          <div class="inspector-label" style="font-size:10px;">目标变量：</div>
+          <select class="set-var inspector-select" style="width:100%; font-size:11px;">
+            ${varOptions}
+          </select>
+        </div>
+        <div>
+          <div class="inspector-label" style="font-size:10px;">赋值内容：</div>
+          <input type="text" class="set-val inspector-input" value="${this.escape(
+            step.value !== undefined ? String(step.value) : step.from ? `from:${step.from}` : ''
+          )}" placeholder="例: true / 100 / from:hero.maxHp" style="width:100%; font-family:monospace; box-sizing:border-box;" />
+        </div>
+      `;
+      body.querySelector('.set-var')?.addEventListener('change', (e) => {
+        const val = (e.target as HTMLSelectElement).value;
+        project.change((d) => {
+          const targetNode = d.events.find((evItem) => evItem.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'set') s.var = val;
+          }
+        }, 'field');
+      });
+      this.bindInput(body, '.set-val', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((evItem) => evItem.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'set') {
+              if (v.startsWith('from:')) {
+                s.from = v.slice(5).trim();
+                delete s.value;
+              } else if (v === 'true') {
+                s.value = true;
+                delete s.from;
+              } else if (v === 'false') {
+                s.value = false;
+                delete s.from;
+              } else if (!isNaN(Number(v)) && v.trim() !== '') {
+                s.value = Number(v);
+                delete s.from;
+              } else {
+                s.value = v;
+                delete s.from;
+              }
+            }
+          }
+        }, 'field', `set_val_${node.id}_${sIdx}`);
+      });
+    } else if (step.type === 'add') {
+      const numVars = p.vars.filter((v) => v.kind === 'number');
+      const varOptions = numVars
+        .map((v) => `<option value="${v.key}" ${v.key === step.var ? 'selected' : ''}>${v.icon} ${v.label} (${v.key})</option>`)
+        .join('');
+
+      body.innerHTML = `
+        <div style="display:grid; grid-template-columns: 1fr 100px; gap:6px;">
+          <div>
+            <div class="inspector-label" style="font-size:10px;">增减目标：</div>
+            <select class="add-var inspector-select" style="width:100%; font-size:11px;">
+              ${varOptions}
+            </select>
+          </div>
+          <div>
+            <div class="inspector-label" style="font-size:10px;">数值 (可正负)：</div>
+            <input type="number" class="add-amount inspector-input" value="${step.amount}" style="width:100%; box-sizing:border-box;" />
+          </div>
+        </div>
+      `;
+      body.querySelector('.add-var')?.addEventListener('change', (e) => {
+        const val = (e.target as HTMLSelectElement).value;
+        project.change((d) => {
+          const targetNode = d.events.find((evItem) => evItem.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'add') s.var = val;
+          }
+        }, 'field');
+      });
+      body.querySelector('.add-amount')?.addEventListener('input', (e) => {
+        const amt = Number((e.target as HTMLInputElement).value) || 0;
+        project.change((d) => {
+          const targetNode = d.events.find((evItem) => evItem.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const s = targetNode.steps[sIdx];
+            if (s && s.type === 'add') s.amount = amt;
+          }
+        }, 'field', `add_amt_${node.id}_${sIdx}`);
+      });
+    }
+
+    // 步骤排序与删除
+    card.querySelector('.btn-substep-up')?.addEventListener('click', () => {
+      if (sIdx > 0) {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const temp = targetNode.steps[sIdx];
+            targetNode.steps[sIdx] = targetNode.steps[sIdx - 1];
+            targetNode.steps[sIdx - 1] = temp;
+          }
+        }, 'structure');
+      }
+    });
+
+    card.querySelector('.btn-substep-down')?.addEventListener('click', () => {
+      if (sIdx < node.steps.length - 1) {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'action') {
+            const temp = targetNode.steps[sIdx];
+            targetNode.steps[sIdx] = targetNode.steps[sIdx + 1];
+            targetNode.steps[sIdx + 1] = temp;
+          }
+        }, 'structure');
+      }
+    });
+
+    card.querySelector('.btn-substep-del')?.addEventListener('click', () => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'action') {
+          targetNode.steps.splice(sIdx, 1);
+        }
+      }, 'structure');
     });
 
     return card;
   }
 
-  // ------------------------------------------------------------------ 步骤编辑组件
+  // 3. Selector 多路条件分支节点编辑
+  private renderSelectorNodeInspector(ev: EventDef, node: SelectorGraphNode): void {
+    const incomingTrigIds = ev.incomingTriggers || [];
 
-  private renderStepCard(ev: EventDef, b: Branch, s: Step, sIdx: number): HTMLElement {
-    const card = document.createElement('div');
-    card.className = 'step-card';
-
-    const typeIcons: Record<string, string> = {
-      say: '💬 对话',
-      choice: '🔀 选项',
-      set: '📝 赋值',
-      add: '➕ 增减'
-    };
-
-    let innerForm = '';
-    const p = project.get();
-
-    if (s.type === 'say') {
-      const say = s as SayStep;
-      innerForm = `
-        <div style="display: grid; grid-template-columns: 42px 1fr 1fr; gap: 6px; margin-bottom: 6px;">
-          <input type="text" class="say-avatar" value="${this.escape(say.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
-          <input type="text" class="say-speaker" value="${this.escape(say.speaker)}" placeholder="说话人姓名" style="width: 100%; min-width: 0; box-sizing: border-box;" />
-          <input type="text" class="say-title" value="${this.escape(say.speakerTitle || '')}" placeholder="身份/头衔 (可选)" style="width: 100%; min-width: 0; box-sizing: border-box;" />
-        </div>
-        <textarea class="say-text" placeholder="输入对话台词内容..." style="width: 100%; height: 56px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(say.text)}</textarea>
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <span style="font-size: 11px; color: #94a3b8; flex-shrink: 0;">确认按钮文案：</span>
-          <input type="text" class="say-btn" value="${this.escape(say.button || '继续')}" placeholder="确认/继续" style="flex: 1; max-width: 140px; padding: 4px 8px; font-size: 11px;" />
-        </div>
-      `;
-    } else if (s.type === 'set') {
-      const set = s as SetStep;
-      innerForm = `
-        <div style="display: grid; grid-template-columns: 1fr 20px 100px; gap: 6px; align-items: center; margin-bottom: 4px;">
-          <select class="set-var" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px;">
-            ${p.vars
-              .map((v) => `<option value="${v.key}" ${v.key === set.var ? 'selected' : ''}>${v.icon} ${v.label}</option>`)
-              .join('')}
-          </select>
-          <span style="text-align: center; color: #38bdf8; font-weight: 700; font-size: 13px;">=</span>
-          <input type="text" class="set-val" value="${this.escape(set.from ? `from:${set.from}` : String(set.value ?? ''))}" placeholder="true / 数值" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px; font-family: var(--font-mono);" />
-        </div>
-        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">💡 可直接填 true/数值，或 from:hero.maxHp 动态读取</div>
-      `;
-    } else if (s.type === 'add') {
-      const add = s as AddStep;
-      innerForm = `
-        <div style="display: grid; grid-template-columns: 1fr 20px 90px; gap: 6px; align-items: center; margin-bottom: 4px;">
-          <select class="add-var" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px;">
-            ${p.vars
-              .filter((v) => v.kind === 'number')
-              .map((v) => `<option value="${v.key}" ${v.key === add.var ? 'selected' : ''}>${v.icon} ${v.label}</option>`)
-              .join('')}
-          </select>
-          <span style="text-align: center; color: #10b981; font-weight: 700; font-size: 13px;">+=</span>
-          <input type="number" class="add-amount" value="${add.amount}" placeholder="数值" style="width: 100%; min-width: 0; padding: 5px 6px; font-size: 11px; font-family: var(--font-mono);" />
-        </div>
-      `;
-    } else if (s.type === 'choice') {
-      const ch = s as ChoiceStep;
-      innerForm = `
-        <div style="display: grid; grid-template-columns: 42px 1fr; gap: 6px; margin-bottom: 6px;">
-          <input type="text" class="choice-avatar" value="${this.escape(ch.avatar || '💬')}" title="头像 Emoji" style="text-align: center; font-size: 15px;" />
-          <input type="text" class="choice-speaker" value="${this.escape(ch.speaker)}" placeholder="说话人姓名" style="width: 100%; min-width: 0; box-sizing: border-box;" />
-        </div>
-        <textarea class="choice-text" placeholder="选项提示文案..." style="width: 100%; height: 44px; resize: vertical; margin-bottom: 6px; line-height: 1.4; padding: 6px 8px; font-size: 12px;">${this.escape(ch.text)}</textarea>
-        <div style="font-size: 10px; font-weight: 700; color: #c4b5fd; margin-bottom: 4px;">选项列表 (${ch.options.length})</div>
-        <div class="choice-options-list">
-          ${ch.options
-            .map(
-              (opt, oIdx) => `
-            <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 11px;">
-              <span style="color: #64748b; font-weight: 700; flex-shrink: 0;">${oIdx + 1}.</span>
-              <input type="text" class="opt-text" data-oidx="${oIdx}" value="${this.escape(opt.text)}" placeholder="选项文案" style="flex: 1; min-width: 0; padding: 4px 6px; font-size: 11px;" />
-              <select class="opt-style" data-oidx="${oIdx}" style="width: 75px; flex-shrink: 0; font-size: 10px; padding: 3px;">
-                <option value="primary" ${opt.style === 'primary' ? 'selected' : ''}>主要(蓝)</option>
-                <option value="secondary" ${opt.style === 'secondary' ? 'selected' : ''}>次要(灰)</option>
-                <option value="danger" ${opt.style === 'danger' ? 'selected' : ''}>危险(红)</option>
-              </select>
-            </div>
-          `
-            )
-            .join('')}
-        </div>
-      `;
-    }
-
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding-bottom: 4px;">
-        <span style="font-size: 11px; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 4px;">${typeIcons[s.type] || s.type}</span>
-        <div style="display: flex; gap: 3px; flex-shrink: 0;">
-          <button class="mini-btn btn-step-up" ${sIdx === 0 ? 'disabled' : ''}>↑</button>
-          <button class="mini-btn btn-step-down" ${sIdx === b.steps.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="mini-btn danger-btn btn-del-step">×</button>
-        </div>
-      </div>
-      ${innerForm}
+    // 标题卡片
+    const titleCard = document.createElement('div');
+    titleCard.className = 'inspector-section';
+    titleCard.innerHTML = `
+      <div class="inspector-label">节点名称 (Title)</div>
+      <input type="text" id="selTitle" class="inspector-input" value="${this.escape(
+        node.title || ''
+      )}" placeholder="例: 阶段判断" style="width: 100%; box-sizing: border-box;" />
     `;
+    this.container.appendChild(titleCard);
 
-    // 绑定字段变化
-    if (s.type === 'say') {
-      const say = s as SayStep;
-      this.bindInput(card, '.say-avatar', (v) => {
-        say.avatar = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.say-speaker', (v) => {
-        say.speaker = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.say-title', (v) => {
-        say.speakerTitle = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.say-text', (v) => {
-        say.text = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.say-btn', (v) => {
-        say.button = v;
-        project.change(() => {}, 'field');
-      });
-    } else if (s.type === 'set') {
-      const set = s as SetStep;
-      const selVar = card.querySelector('.set-var') as HTMLSelectElement;
-      selVar.onchange = () => {
-        set.var = selVar.value;
-        project.change(() => {}, 'field');
-      };
-      const inpVal = card.querySelector('.set-val') as HTMLInputElement;
-      inpVal.oninput = () => {
-        const txt = inpVal.value.trim();
-        if (txt.startsWith('from:')) {
-          set.from = txt.slice(5).trim();
-          delete set.value;
-        } else if (txt === 'true') {
-          set.value = true;
-          delete set.from;
-        } else if (txt === 'false') {
-          set.value = false;
-          delete set.from;
-        } else if (!isNaN(Number(txt)) && txt !== '') {
-          set.value = Number(txt);
-          delete set.from;
-        } else {
-          set.value = txt;
-          delete set.from;
-        }
-        project.change(() => {}, 'field');
-      };
-    } else if (s.type === 'add') {
-      const add = s as AddStep;
-      const selVar = card.querySelector('.add-var') as HTMLSelectElement;
-      selVar.onchange = () => {
-        add.var = selVar.value;
-        project.change(() => {}, 'field');
-      };
-      const inpAmt = card.querySelector('.add-amount') as HTMLInputElement;
-      inpAmt.oninput = () => {
-        add.amount = Number(inpAmt.value) || 0;
-        project.change(() => {}, 'field');
-      };
-    } else if (s.type === 'choice') {
-      const ch = s as ChoiceStep;
-      this.bindInput(card, '.choice-avatar', (v) => {
-        ch.avatar = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.choice-speaker', (v) => {
-        ch.speaker = v;
-        project.change(() => {}, 'field');
-      });
-      this.bindInput(card, '.choice-text', (v) => {
-        ch.text = v;
-        project.change(() => {}, 'field');
-      });
-      card.querySelectorAll('.opt-text').forEach((inp) => {
-        inp.addEventListener('input', () => {
-          const idx = Number((inp as HTMLElement).dataset.oidx);
-          if (ch.options[idx]) {
-            ch.options[idx].text = (inp as HTMLInputElement).value;
-            project.change(() => {}, 'field');
-          }
-        });
-      });
-      card.querySelectorAll('.opt-style').forEach((sel) => {
-        sel.addEventListener('change', () => {
-          const idx = Number((sel as HTMLElement).dataset.oidx);
-          if (ch.options[idx]) {
-            ch.options[idx].style = (sel as HTMLSelectElement).value as ChoiceOption['style'];
-            project.change(() => {}, 'field');
-          }
-        });
-      });
-    }
-
-    // 步骤排序与删除
-    card.querySelector('.btn-step-up')?.addEventListener('click', () => {
-      if (sIdx > 0) {
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          const targetB = targetEv?.branches.find((x) => x.id === b.id);
-          if (targetB) {
-            const temp = targetB.steps[sIdx];
-            targetB.steps[sIdx] = targetB.steps[sIdx - 1];
-            targetB.steps[sIdx - 1] = temp;
-          }
-        }, 'structure');
-      }
-    });
-
-    card.querySelector('.btn-step-down')?.addEventListener('click', () => {
-      if (sIdx < b.steps.length - 1) {
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === ev.id);
-          const targetB = targetEv?.branches.find((x) => x.id === b.id);
-          if (targetB) {
-            const temp = targetB.steps[sIdx];
-            targetB.steps[sIdx] = targetB.steps[sIdx + 1];
-            targetB.steps[sIdx + 1] = temp;
-          }
-        }, 'structure');
-      }
-    });
-
-    card.querySelector('.btn-del-step')?.addEventListener('click', () => {
+    this.bindInput(titleCard, '#selTitle', (v) => {
       project.change((d) => {
-        const targetEv = d.events.find((x) => x.id === ev.id);
-        const targetB = targetEv?.branches.find((x) => x.id === b.id);
-        if (targetB) {
-          targetB.steps.splice(sIdx, 1);
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'selector') {
+          targetNode.title = v;
+        }
+      }, 'field', `sub_title_${node.id}`);
+    });
+
+    // 分支 Cases 卡片
+    const casesCard = document.createElement('div');
+    casesCard.className = 'inspector-section';
+    casesCard.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div class="inspector-label" style="margin-bottom:0;">
+          条件分支列表 (${node.cases.length} 项，从上到下匹配)
+        </div>
+        <button id="btnAddCase" class="mini-btn-action">+ 添加分支</button>
+      </div>
+      <div id="casesContainer"></div>
+    `;
+    this.container.appendChild(casesCard);
+
+    casesCard.querySelector('#btnAddCase')?.addEventListener('click', () => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'selector') {
+          targetNode.cases.push({
+            id: uid('case'),
+            title: `分支 ${targetNode.cases.length + 1}`,
+            checks: incomingTrigIds.length > 0 ? [{ triggerId: incomingTrigIds[0] }] : []
+          });
         }
       }, 'structure');
     });
 
-    return card;
+    const casesContainer = casesCard.querySelector('#casesContainer') as HTMLElement;
+    node.cases.forEach((c, cIdx) => {
+      const caseEl = document.createElement('div');
+      caseEl.className = 'step-card';
+      caseEl.style.cssText =
+        'background: #0d1222; border: 1px solid rgba(168,85,247,0.3); border-radius: 6px; padding: 10px; margin-bottom: 10px;';
+
+      caseEl.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:6px;">
+          <span style="color:#c084fc; font-weight:700; font-size:11px;">Case ${cIdx + 1}</span>
+          <input type="text" class="case-title inspector-input" value="${this.escape(
+            c.title
+          )}" placeholder="分支说明" style="flex:1; min-width:0; padding:2px 6px; font-size:12px;" />
+          <div style="display:flex; gap:3px;">
+            <button class="mini-btn btn-case-up" ${cIdx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="mini-btn btn-case-down" ${cIdx === node.cases.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="mini-btn danger-btn btn-case-del">×</button>
+          </div>
+        </div>
+
+        <div style="font-size:10px; font-weight:700; color:#38bdf8; margin:6px 0 4px; display:flex; justify-content:space-between; align-items:center;">
+          <span>⚡ 连入 Trigger 判断规则 (需全部满足)：</span>
+          ${
+            incomingTrigIds.length > 0
+              ? `<button class="mini-btn btn-add-check" style="font-size:9px; padding:1px 5px;">+ 判断规则</button>`
+              : ''
+          }
+        </div>
+        <div class="checks-list" style="margin-bottom:8px;"></div>
+
+        <div class="case-target-wrap"></div>
+      `;
+
+      this.bindInput(caseEl, '.case-title', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'selector' && targetNode.cases[cIdx]) {
+            targetNode.cases[cIdx].title = v;
+          }
+        }, 'field', `case_title_${node.id}_${cIdx}`);
+      });
+
+      // 规则列表
+      const checksList = caseEl.querySelector('.checks-list') as HTMLElement;
+      if (c.checks.length === 0) {
+        checksList.innerHTML = `<div style="font-size:10px; color:#64748b;">(暂无判断规则)</div>`;
+      } else {
+        c.checks.forEach((chk, chkIdx) => {
+          const chkRow = this.renderCheckRow(ev, chk, () => {
+            project.change((d) => {
+              const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+              if (targetNode && targetNode.type === 'selector') {
+                targetNode.cases[cIdx]?.checks.splice(chkIdx, 1);
+              }
+            }, 'structure');
+          });
+          checksList.appendChild(chkRow);
+        });
+      }
+
+      caseEl.querySelector('.btn-add-check')?.addEventListener('click', () => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'selector' && incomingTrigIds.length > 0) {
+            targetNode.cases[cIdx]?.checks.push({ triggerId: incomingTrigIds[0] });
+          }
+        }, 'structure');
+      });
+
+      // 流向设置
+      const targetWrap = caseEl.querySelector('.case-target-wrap') as HTMLElement;
+      const targetUI = this.renderTargetSelectUI(
+        ev,
+        c.targetId,
+        c.defaultOptionIndex,
+        (targetId, defaultOptionIndex) => {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'selector') {
+              const tc = targetNode.cases[cIdx];
+              if (tc) {
+                tc.targetId = targetId;
+                tc.defaultOptionIndex = defaultOptionIndex;
+              }
+            }
+          }, 'structure');
+        }
+      );
+      targetWrap.appendChild(targetUI);
+
+      // 上移下移删除
+      caseEl.querySelector('.btn-case-up')?.addEventListener('click', () => {
+        if (cIdx > 0) {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'selector') {
+              const temp = targetNode.cases[cIdx];
+              targetNode.cases[cIdx] = targetNode.cases[cIdx - 1];
+              targetNode.cases[cIdx - 1] = temp;
+            }
+          }, 'structure');
+        }
+      });
+      caseEl.querySelector('.btn-case-down')?.addEventListener('click', () => {
+        if (cIdx < node.cases.length - 1) {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'selector') {
+              const temp = targetNode.cases[cIdx];
+              targetNode.cases[cIdx] = targetNode.cases[cIdx + 1];
+              targetNode.cases[cIdx + 1] = temp;
+            }
+          }, 'structure');
+        }
+      });
+      caseEl.querySelector('.btn-case-del')?.addEventListener('click', () => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'selector') {
+            targetNode.cases.splice(cIdx, 1);
+          }
+        }, 'structure');
+      });
+
+      casesContainer.appendChild(caseEl);
+    });
+
+    // Default 保底目标卡片
+    const defCard = document.createElement('div');
+    defCard.className = 'inspector-section';
+    defCard.innerHTML = `
+      <div class="inspector-label">Default 保底流向 (所有条件均不满足时流向)：</div>
+    `;
+    const defTargetUI = this.renderTargetSelectUI(
+      ev,
+      node.defaultTargetId,
+      node.defaultOptionIndex,
+      (targetId, defaultOptionIndex) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'selector') {
+            targetNode.defaultTargetId = targetId;
+            targetNode.defaultOptionIndex = defaultOptionIndex;
+          }
+        }, 'structure');
+      }
+    );
+    defCard.appendChild(defTargetUI);
+    this.container.appendChild(defCard);
+  }
+
+  // 4. Choice 玩家选项分流节点编辑
+  private renderChoiceNodeInspector(ev: EventDef, node: ChoiceGraphNode): void {
+    const incomingTrigIds = ev.incomingTriggers || [];
+
+    // 提问信息卡片
+    const askCard = document.createElement('div');
+    askCard.className = 'inspector-section';
+    askCard.innerHTML = `
+      <div class="inspector-label">选项卡片标题</div>
+      <input type="text" id="choiceTitle" class="inspector-input" value="${this.escape(
+        node.title || ''
+      )}" placeholder="例: 玩家选项提问" style="width: 100%; margin-bottom: 8px; box-sizing: border-box;" />
+
+      <div style="display:grid; grid-template-columns: 50px 1fr 1fr; gap:6px; margin-bottom:8px;">
+        <div>
+          <div class="inspector-label">头像</div>
+          <input type="text" id="choiceAvatar" class="inspector-input" value="${this.escape(
+            node.avatar || '💬'
+          )}" style="width:100%; text-align:center; font-size:16px; box-sizing:border-box;" />
+        </div>
+        <div>
+          <div class="inspector-label">说话人</div>
+          <input type="text" id="choiceSpeaker" class="inspector-input" value="${this.escape(
+            node.speaker || ''
+          )}" style="width:100%; box-sizing:border-box;" />
+        </div>
+        <div>
+          <div class="inspector-label">头衔</div>
+          <input type="text" id="choiceSpeakerTitle" class="inspector-input" value="${this.escape(
+            node.speakerTitle || ''
+          )}" placeholder="例: 侍从" style="width:100%; box-sizing:border-box;" />
+        </div>
+      </div>
+
+      <div class="inspector-label">提问台词正文 (支持 {hero.gold} 变量插值)</div>
+      <textarea id="choiceText" class="inspector-textarea" style="width: 100%; height: 56px; resize: vertical; box-sizing: border-box;">${this.escape(
+        node.text || ''
+      )}</textarea>
+    `;
+    this.container.appendChild(askCard);
+
+    this.bindInput(askCard, '#choiceTitle', (v) => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.title = v;
+        }
+      }, 'field', `sub_title_${node.id}`);
+    });
+    this.bindInput(askCard, '#choiceAvatar', (v) => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.avatar = v;
+        }
+      }, 'field');
+    });
+    this.bindInput(askCard, '#choiceSpeaker', (v) => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.speaker = v;
+        }
+      }, 'field');
+    });
+    this.bindInput(askCard, '#choiceSpeakerTitle', (v) => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.speakerTitle = v;
+        }
+      }, 'field');
+    });
+    this.bindInput(askCard, '#choiceText', (v) => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.text = v;
+        }
+      }, 'field');
+    });
+
+    // 选项列表卡片
+    const optCard = document.createElement('div');
+    optCard.className = 'inspector-section';
+    optCard.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div class="inspector-label" style="margin-bottom:0;">
+          玩家选项列表 (${node.options.length} 个)
+        </div>
+        <button id="btnAddOpt" class="mini-btn-action">+ 添加选项</button>
+      </div>
+      <div id="optionsContainer"></div>
+    `;
+    this.container.appendChild(optCard);
+
+    optCard.querySelector('#btnAddOpt')?.addEventListener('click', () => {
+      project.change((d) => {
+        const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+        if (targetNode && targetNode.type === 'choice') {
+          targetNode.options.push({
+            id: uid('opt'),
+            text: `选项 ${targetNode.options.length + 1}`,
+            style: 'primary'
+          });
+        }
+      }, 'structure');
+    });
+
+    const optContainer = optCard.querySelector('#optionsContainer') as HTMLElement;
+    node.options.forEach((opt, oIdx) => {
+      const oEl = document.createElement('div');
+      oEl.className = 'step-card';
+      oEl.style.cssText =
+        'background: #17120a; border: 1px solid rgba(245,158,11,0.3); border-radius: 6px; padding: 10px; margin-bottom: 10px;';
+
+      oEl.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:6px;">
+          <span style="color:#fbbf24; font-weight:700; font-size:11px;">[${oIdx}]</span>
+          <input type="text" class="opt-text inspector-input" value="${this.escape(
+            opt.text
+          )}" placeholder="按钮文案" style="flex:1; min-width:0; padding:3px 6px; font-size:12px;" />
+          <select class="opt-style inspector-select" style="font-size:11px; padding:2px 4px;">
+            <option value="primary" ${opt.style === 'primary' ? 'selected' : ''}>主要(绿)</option>
+            <option value="secondary" ${opt.style === 'secondary' ? 'selected' : ''}>次要(灰)</option>
+            <option value="danger" ${opt.style === 'danger' ? 'selected' : ''}>危险(红)</option>
+          </select>
+          <div style="display:flex; gap:3px;">
+            <button class="mini-btn btn-opt-up" ${oIdx === 0 ? 'disabled' : ''}>↑</button>
+            <button class="mini-btn btn-opt-down" ${oIdx === node.options.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="mini-btn danger-btn btn-opt-del">×</button>
+          </div>
+        </div>
+
+        <div style="font-size:10px; font-weight:700; color:#f59e0b; margin:6px 0 4px; display:flex; justify-content:space-between; align-items:center;">
+          <span>前置可用条件 (不满足置灰)：</span>
+          ${
+            incomingTrigIds.length > 0
+              ? `<button class="mini-btn btn-add-opt-check" style="font-size:9px; padding:1px 5px;">+ 前置条件</button>`
+              : ''
+          }
+        </div>
+        <div class="opt-checks-list" style="margin-bottom:8px;"></div>
+
+        <div class="opt-target-wrap"></div>
+      `;
+
+      this.bindInput(oEl, '.opt-text', (v) => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'choice' && targetNode.options[oIdx]) {
+            targetNode.options[oIdx].text = v;
+          }
+        }, 'field', `opt_text_${node.id}_${oIdx}`);
+      });
+
+      oEl.querySelector('.opt-style')?.addEventListener('change', (e) => {
+        const val = (e.target as HTMLSelectElement).value as any;
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'choice' && targetNode.options[oIdx]) {
+            targetNode.options[oIdx].style = val;
+          }
+        }, 'field');
+      });
+
+      // 选项可用前置条件
+      const checksList = oEl.querySelector('.opt-checks-list') as HTMLElement;
+      const chks = opt.checks || [];
+      if (chks.length === 0) {
+        checksList.innerHTML = `<div style="font-size:10px; color:#64748b;">(无条件限制，始终可选)</div>`;
+      } else {
+        chks.forEach((chk, chkIdx) => {
+          const chkRow = this.renderCheckRow(ev, chk, () => {
+            project.change((d) => {
+              const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+              if (targetNode && targetNode.type === 'choice') {
+                targetNode.options[oIdx]?.checks?.splice(chkIdx, 1);
+              }
+            }, 'structure');
+          });
+          checksList.appendChild(chkRow);
+        });
+      }
+
+      oEl.querySelector('.btn-add-opt-check')?.addEventListener('click', () => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'choice' && incomingTrigIds.length > 0) {
+            const o = targetNode.options[oIdx];
+            if (!o.checks) o.checks = [];
+            o.checks.push({ triggerId: incomingTrigIds[0] });
+          }
+        }, 'structure');
+      });
+
+      // 流向设置
+      const targetWrap = oEl.querySelector('.opt-target-wrap') as HTMLElement;
+      const targetUI = this.renderTargetSelectUI(
+        ev,
+        opt.targetId,
+        opt.defaultOptionIndex,
+        (targetId, defaultOptionIndex) => {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'choice') {
+              const to = targetNode.options[oIdx];
+              if (to) {
+                to.targetId = targetId;
+                to.defaultOptionIndex = defaultOptionIndex;
+              }
+            }
+          }, 'structure');
+        }
+      );
+      targetWrap.appendChild(targetUI);
+
+      // 上移下移删除
+      oEl.querySelector('.btn-opt-up')?.addEventListener('click', () => {
+        if (oIdx > 0) {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'choice') {
+              const temp = targetNode.options[oIdx];
+              targetNode.options[oIdx] = targetNode.options[oIdx - 1];
+              targetNode.options[oIdx - 1] = temp;
+            }
+          }, 'structure');
+        }
+      });
+      oEl.querySelector('.btn-opt-down')?.addEventListener('click', () => {
+        if (oIdx < node.options.length - 1) {
+          project.change((d) => {
+            const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode && targetNode.type === 'choice') {
+              const temp = targetNode.options[oIdx];
+              targetNode.options[oIdx] = targetNode.options[oIdx + 1];
+              targetNode.options[oIdx + 1] = temp;
+            }
+          }, 'structure');
+        }
+      });
+      oEl.querySelector('.btn-opt-del')?.addEventListener('click', () => {
+        project.change((d) => {
+          const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
+          if (targetNode && targetNode.type === 'choice') {
+            targetNode.options.splice(oIdx, 1);
+          }
+        }, 'structure');
+      });
+
+      optContainer.appendChild(oEl);
+    });
+  }
+
+  /** 渲染一条针对连入 Trigger 的比较规则 (TriggerCheck) */
+  private renderCheckRow(ev: EventDef, check: TriggerCheck, onDelete: () => void): HTMLElement {
+    const p = project.get();
+    const incomingTrigIds = ev.incomingTriggers || [];
+    const row = document.createElement('div');
+    row.style.cssText =
+      'display:grid; grid-template-columns: 1fr 60px 70px 24px; gap:4px; align-items:center; margin-bottom:4px;';
+
+    const trigOptions = incomingTrigIds
+      .map((tid) => {
+        const t = p.triggers.find((x) => x.id === tid);
+        const title = t ? t.title.replace('⚡ trigger: ', '') : tid;
+        return `<option value="${tid}" ${tid === check.triggerId ? 'selected' : ''}>⚡ ${this.escape(title)}</option>`;
+      })
+      .join('');
+
+    const opList = ['==', '!=', '>=', '<=', '>', '<'];
+    const opOptions = opList
+      .map((op) => `<option value="${op}" ${op === (check.op || '==') ? 'selected' : ''}>${op}</option>`)
+      .join('');
+
+    row.innerHTML = `
+      <select class="chk-trig-select inspector-select" style="font-size:10px; padding:2px;">
+        ${trigOptions}
+      </select>
+      <select class="chk-op-select inspector-select" style="font-size:10px; padding:2px; font-family:monospace;">
+        ${opOptions}
+      </select>
+      <input type="text" class="chk-val-input inspector-input" value="${this.escape(
+        check.value !== undefined ? String(check.value) : 'true'
+      )}" placeholder="值" style="font-size:10px; padding:2px 4px; box-sizing:border-box; font-family:monospace;" />
+      <button class="mini-btn danger-btn btn-del-check" style="padding:2px 4px;" title="删除此规则">×</button>
+    `;
+
+    row.querySelector('.chk-trig-select')?.addEventListener('change', (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        targetEv?.actionGraph?.nodes?.forEach((n) => {
+          if (n.type === 'selector') {
+            n.cases.forEach((c) => c.checks.forEach((chk) => { if (chk === check) chk.triggerId = v; }));
+          } else if (n.type === 'choice') {
+            n.options.forEach((o) => o.checks?.forEach((chk) => { if (chk === check) chk.triggerId = v; }));
+          }
+        });
+      }, 'field');
+    });
+    row.querySelector('.chk-op-select')?.addEventListener('change', (e) => {
+      const v = (e.target as HTMLSelectElement).value as any;
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        targetEv?.actionGraph?.nodes?.forEach((n) => {
+          if (n.type === 'selector') {
+            n.cases.forEach((c) => c.checks.forEach((chk) => { if (chk === check) chk.op = v; }));
+          } else if (n.type === 'choice') {
+            n.options.forEach((o) => o.checks?.forEach((chk) => { if (chk === check) chk.op = v; }));
+          }
+        });
+      }, 'field');
+    });
+    this.bindInput(row, '.chk-val-input', (v) => {
+      let val: any = v;
+      if (v === 'true') val = true;
+      else if (v === 'false') val = false;
+      else if (!isNaN(Number(v)) && v.trim() !== '') val = Number(v);
+      project.change((d) => {
+        const targetEv = d.events.find((x) => x.id === ev.id);
+        targetEv?.actionGraph?.nodes?.forEach((n) => {
+          if (n.type === 'selector') {
+            n.cases.forEach((c) => c.checks.forEach((chk) => { if (chk === check) chk.value = val; }));
+          } else if (n.type === 'choice') {
+            n.options.forEach((o) => o.checks?.forEach((chk) => { if (chk === check) chk.value = val; }));
+          }
+        });
+      }, 'field', `chk_val_${check.triggerId}`);
+    });
+    row.querySelector('.btn-del-check')?.addEventListener('click', onDelete);
+
+    return row;
   }
 
   // ------------------------------------------------------------------ Trigger 节点编辑
@@ -845,12 +1460,16 @@ export class NodeInspector {
     this.container.appendChild(metaCard);
 
     this.bindInput(metaCard, '#trTitle', (v) => {
-      tr.title = v;
-      project.change(() => {}, 'field', `tr_title_${tr.id}`);
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr) targetTr.title = v;
+      }, 'field', `tr_title_${tr.id}`);
     });
     this.bindInput(metaCard, '#trDesc', (v) => {
-      tr.desc = v;
-      project.change(() => {}, 'field');
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr) targetTr.desc = v;
+      }, 'field');
     });
 
     const btnDel = metaCard.querySelector('#btnDeleteTrigger') as HTMLElement;
@@ -879,8 +1498,11 @@ export class NodeInspector {
     this.container.appendChild(condCard);
 
     condCard.querySelector('#trMatch')?.addEventListener('change', (e) => {
-      tr.match = (e.target as HTMLSelectElement).value as 'all' | 'any';
-      project.change(() => {}, 'field');
+      const m = (e.target as HTMLSelectElement).value as 'all' | 'any';
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr) targetTr.match = m;
+      }, 'field');
     });
 
     condCard.querySelector('#btnAddCond')?.addEventListener('click', () => {
@@ -980,24 +1602,39 @@ export class NodeInspector {
 
     const selVar = row.querySelector('.cond-var') as HTMLSelectElement;
     selVar.onchange = () => {
-      c.var = selVar.value;
-      project.change(() => {}, 'field');
+      const v = selVar.value;
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr && targetTr.conds[cIdx]) {
+          targetTr.conds[cIdx].var = v;
+        }
+      }, 'field');
     };
 
     const selOp = row.querySelector('.cond-op') as HTMLSelectElement;
     selOp.onchange = () => {
-      c.op = selOp.value as CmpCond['op'];
-      project.change(() => {}, 'field');
+      const op = selOp.value as CmpCond['op'];
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr && targetTr.conds[cIdx]) {
+          targetTr.conds[cIdx].op = op;
+        }
+      }, 'field');
     };
 
     const inpVal = row.querySelector('.cond-val') as HTMLInputElement;
     inpVal.oninput = () => {
       const txt = inpVal.value.trim();
-      if (txt === 'true') c.value = true;
-      else if (txt === 'false') c.value = false;
-      else if (!isNaN(Number(txt)) && txt !== '') c.value = Number(txt);
-      else c.value = txt;
-      project.change(() => {}, 'field');
+      let val: any = txt;
+      if (txt === 'true') val = true;
+      else if (txt === 'false') val = false;
+      else if (!isNaN(Number(txt)) && txt !== '') val = Number(txt);
+      project.change((d) => {
+        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        if (targetTr && targetTr.conds[cIdx]) {
+          targetTr.conds[cIdx].value = val;
+        }
+      }, 'field', `tr_cond_val_${tr.id}_${cIdx}`);
     };
 
     row.querySelector('.btn-del-cond')?.addEventListener('click', () => {

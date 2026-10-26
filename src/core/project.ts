@@ -3,9 +3,8 @@ import {
   EventDef,
   TriggerDef,
   VarDef,
-  Step,
-  CmpCond,
-  Branch
+  ActionGraphNodeUnion,
+  ActionGraph
 } from './types';
 
 /** 变更来源：决定各面板是否需要整体重绘 */
@@ -22,23 +21,6 @@ const SAVE_DELAY_MS = 500;
 
 export function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-/** 递归遍历步骤（包括选项内的嵌套步骤） */
-export function walkSteps(steps: Step[], fn: (step: Step) => void): void {
-  steps.forEach((s) => {
-    fn(s);
-    if (s.type === 'choice') {
-      s.options.forEach((o) => walkSteps(o.steps, fn));
-    }
-  });
-}
-
-/** 遍历选项上的金币等 require 条件 */
-function walkRequires(steps: Step[], fn: (c: CmpCond) => void): void {
-  walkSteps(steps, (s) => {
-    if (s.type === 'choice') s.options.forEach((o) => (o.require || []).forEach(fn));
-  });
 }
 
 class ProjectStore {
@@ -198,6 +180,8 @@ class ProjectStore {
   // ------------------------------------------------------------------ 节点增删
 
   public addEvent(x: number, y: number): EventDef {
+    const startId = uid('start');
+    const actId = uid('act');
     const ev: EventDef = {
       id: uid('evt'),
       title: '💬 新事件',
@@ -205,14 +189,20 @@ class ProjectStore {
       sourceRef: '',
       x: Math.round(x),
       y: Math.round(y),
-      branches: [
-        {
-          id: uid('b'),
-          title: '默认行为',
-          when: [],
-          steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在这里编写台词……', button: '继续' }]
-        }
-      ]
+      incomingTriggers: [],
+      actionGraph: {
+        nodes: [
+          { id: startId, type: 'start', x: 60, y: 120, nextId: actId, defaultOptionIndex: 0 },
+          {
+            id: actId,
+            type: 'action',
+            title: '🎬 动作执行',
+            x: 280,
+            y: 110,
+            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在这里编写台词……', button: '继续' }]
+          }
+        ]
+      }
     };
     this.change((d) => d.events.push(ev), 'structure');
     return ev;
@@ -239,22 +229,190 @@ class ProjectStore {
     }, 'structure');
   }
 
-  /** 删除 Trigger，同时清理所有分支中对它的引用 */
+  /** 删除 Trigger，同时清理 Action Tree 中对它的引用 */
   public deleteTrigger(id: string): void {
     this.change((d) => {
       d.triggers = d.triggers.filter((t) => t.id !== id);
-      d.events.forEach((e) => e.branches.forEach((b) => (b.when = b.when.filter((w) => w !== id))));
+      d.events.forEach((e) => {
+        if (e.incomingTriggers) e.incomingTriggers = e.incomingTriggers.filter((w) => w !== id);
+        if (e.actionGraph?.nodes) {
+          e.actionGraph.nodes.forEach((n) => {
+            if (n.type === 'selector') {
+              n.cases.forEach((c) => {
+                c.checks = c.checks.filter((chk) => chk.triggerId !== id);
+              });
+            } else if (n.type === 'choice') {
+              n.options.forEach((o) => {
+                if (o.checks) o.checks = o.checks.filter((chk) => chk.triggerId !== id);
+              });
+            }
+          });
+        }
+      });
     }, 'structure');
   }
 
-  /** 引用了该 Trigger 的分支 */
-  public findTriggerRefs(id: string): { event: EventDef; branch: Branch }[] {
-    const refs: { event: EventDef; branch: Branch }[] = [];
-    this.data.events.forEach((event) =>
-      event.branches.forEach((branch) => {
-        if (branch.when.includes(id)) refs.push({ event, branch });
-      })
-    );
+  /** 断开 Trigger 与 Event 的连线，同时清理 Event 动作树中的引用 */
+  public disconnectTrigger(eventId: string, triggerId: string): void {
+    this.change((d) => {
+      const ev = d.events.find((e) => e.id === eventId);
+      if (!ev) return;
+      if (ev.incomingTriggers) {
+        ev.incomingTriggers = ev.incomingTriggers.filter((id) => id !== triggerId);
+      }
+      if (ev.actionGraph?.nodes) {
+        ev.actionGraph.nodes.forEach((n) => {
+          if (n.type === 'selector') {
+            n.cases.forEach((c) => {
+              c.checks = c.checks.filter((chk) => chk.triggerId !== triggerId);
+            });
+          } else if (n.type === 'choice') {
+            n.options.forEach((o) => {
+              if (o.checks) o.checks = o.checks.filter((chk) => chk.triggerId !== triggerId);
+            });
+          }
+        });
+      }
+    }, 'structure');
+  }
+
+  // ------------------------------------------------------------------ Action Tree 子图操作
+
+  public ensureActionGraph(ev: EventDef): ActionGraph {
+    if (!ev.actionGraph || !ev.actionGraph.nodes || ev.actionGraph.nodes.length === 0) {
+      const startId = uid('start');
+      const actId = uid('act');
+      ev.actionGraph = {
+        nodes: [
+          { id: startId, type: 'start', x: 60, y: 120, nextId: actId, defaultOptionIndex: 0 },
+          {
+            id: actId,
+            type: 'action',
+            title: '🎬 动作执行',
+            x: 280,
+            y: 110,
+            steps: [{ type: 'say', speaker: '旁白', avatar: '💬', text: '在此编写台词...', button: '继续' }]
+          }
+        ]
+      };
+    }
+    return ev.actionGraph;
+  }
+
+  public getGraphNode(eventId: string, nodeId: string): ActionGraphNodeUnion | undefined {
+    const ev = this.getEvent(eventId);
+    return ev?.actionGraph?.nodes.find((n) => n.id === nodeId);
+  }
+
+  public addGraphNode(
+    eventId: string,
+    type: 'action' | 'selector' | 'choice',
+    x: number,
+    y: number
+  ): ActionGraphNodeUnion | undefined {
+    const ev = this.getEvent(eventId);
+    if (!ev) return undefined;
+    this.ensureActionGraph(ev);
+    let newNode: ActionGraphNodeUnion;
+
+    if (type === 'action') {
+      newNode = {
+        id: uid('act'),
+        type: 'action',
+        title: '🎬 新复合动作',
+        x: Math.round(x),
+        y: Math.round(y),
+        steps: [
+          { type: 'say', speaker: '旁白', avatar: '💬', text: '台词文本...', button: '确认' }
+        ]
+      };
+    } else if (type === 'selector') {
+      newNode = {
+        id: uid('sel'),
+        type: 'selector',
+        title: '🔀 条件判断',
+        x: Math.round(x),
+        y: Math.round(y),
+        cases: [
+          {
+            id: uid('case'),
+            title: '分支 1',
+            checks: ev.incomingTriggers && ev.incomingTriggers.length > 0 ? [{ triggerId: ev.incomingTriggers[0] }] : []
+          }
+        ]
+      };
+    } else {
+      newNode = {
+        id: uid('choice'),
+        type: 'choice',
+        title: '💬 玩家选项',
+        x: Math.round(x),
+        y: Math.round(y),
+        speaker: 'NPC',
+        speakerTitle: '王城人物',
+        avatar: '💬',
+        text: '请做出选择：',
+        options: [
+          { id: uid('opt'), text: '选项 1', style: 'primary' },
+          { id: uid('opt'), text: '选项 2', style: 'secondary' }
+        ]
+      };
+    }
+
+    this.change((d) => {
+      const targetEv = d.events.find((e) => e.id === eventId);
+      if (targetEv) {
+        if (!targetEv.actionGraph) targetEv.actionGraph = { nodes: [] };
+        targetEv.actionGraph.nodes.push(newNode);
+      }
+    }, 'structure');
+
+    return newNode;
+  }
+
+  public deleteGraphNode(eventId: string, nodeId: string): void {
+    const node = this.getGraphNode(eventId, nodeId);
+    if (!node || node.type === 'start') return;
+
+    this.change((d) => {
+      const targetEv = d.events.find((e) => e.id === eventId);
+      if (!targetEv || !targetEv.actionGraph) return;
+
+      targetEv.actionGraph.nodes = targetEv.actionGraph.nodes.filter((n) => n.id !== nodeId);
+
+      targetEv.actionGraph.nodes.forEach((n) => {
+        if (n.type === 'start' && n.nextId === nodeId) {
+          delete n.nextId;
+        } else if (n.type === 'action' && n.nextId === nodeId) {
+          delete n.nextId;
+        } else if (n.type === 'selector') {
+          if (n.defaultTargetId === nodeId) delete n.defaultTargetId;
+          n.cases.forEach((c) => {
+            if (c.targetId === nodeId) delete c.targetId;
+          });
+        } else if (n.type === 'choice') {
+          n.options.forEach((o) => {
+            if (o.targetId === nodeId) delete o.targetId;
+          });
+        }
+      });
+    }, 'structure');
+  }
+
+  /** 引用了该 Trigger 的事件 */
+  public findTriggerRefs(id: string): { event: EventDef }[] {
+    const refs: { event: EventDef }[] = [];
+    this.data.events.forEach((event) => {
+      let used = false;
+      if (event.incomingTriggers?.includes(id)) used = true;
+      if (event.actionGraph?.nodes) {
+        event.actionGraph.nodes.forEach((n) => {
+          if (n.type === 'selector' && n.cases.some((c) => c.checks.some((chk) => chk.triggerId === id))) used = true;
+          if (n.type === 'choice' && n.options.some((o) => o.checks?.some((chk) => chk.triggerId === id))) used = true;
+        });
+      }
+      if (used) refs.push({ event });
+    });
     return refs;
   }
 
@@ -282,19 +440,18 @@ class ProjectStore {
     this.data.triggers.forEach((t) => {
       if (t.conds.some((c) => c.var === key)) refs.push(`Trigger「${t.title}」`);
     });
-    this.data.events.forEach((e) =>
-      e.branches.forEach((b) => {
-        let used = false;
-        walkSteps(b.steps, (s) => {
-          if ((s.type === 'set' || s.type === 'add') && s.var === key) used = true;
-          if (s.type === 'set' && s.from === key) used = true;
-        });
-        walkRequires(b.steps, (c) => {
-          if (c.var === key) used = true;
-        });
-        if (used) refs.push(`Event「${e.title}」分支「${b.title}」`);
-      })
-    );
+    this.data.events.forEach((e) => {
+      let used = false;
+      e.actionGraph?.nodes?.forEach((n) => {
+        if (n.type === 'action') {
+          n.steps.forEach((s) => {
+            if ((s.type === 'set' || s.type === 'add') && s.var === key) used = true;
+            if (s.type === 'set' && s.from === key) used = true;
+          });
+        }
+      });
+      if (used) refs.push(`Event「${e.title}」`);
+    });
     return refs;
   }
 
@@ -312,15 +469,16 @@ class ProjectStore {
       const v = d.vars.find((x) => x.key === oldKey);
       if (v) v.key = newKey;
       d.triggers.forEach((t) => t.conds.forEach((c) => c.var === oldKey && (c.var = newKey)));
-      d.events.forEach((e) =>
-        e.branches.forEach((b) => {
-          walkSteps(b.steps, (s) => {
-            if ((s.type === 'set' || s.type === 'add') && s.var === oldKey) s.var = newKey;
-            if (s.type === 'set' && s.from === oldKey) s.from = newKey;
-          });
-          walkRequires(b.steps, (c) => c.var === oldKey && (c.var = newKey));
-        })
-      );
+      d.events.forEach((e) => {
+        e.actionGraph?.nodes?.forEach((n) => {
+          if (n.type === 'action') {
+            n.steps.forEach((s) => {
+              if ((s.type === 'set' || s.type === 'add') && s.var === oldKey) s.var = newKey;
+              if (s.type === 'set' && s.from === oldKey) s.from = newKey;
+            });
+          }
+        });
+      });
       d.presets.forEach((p) => {
         if (oldKey in p.values) {
           p.values[newKey] = p.values[oldKey];

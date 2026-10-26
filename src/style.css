@@ -1765,6 +1765,226 @@ input:checked + .slider:before {
   z-index: 100 !important;
 }
 
+/* ==========================================================================
+   Action Tree 子图节点视觉系统 (Start / Selector / Choice / Action)
+   ========================================================================== */
+
+.sub-node {
+  position: absolute;
+  background: #111422;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  font-family: var(--font-sans);
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  min-width: 180px;
+}
+
+.sub-node:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+}
+
+.sub-node.selected {
+  outline: 2px solid #a855f7;
+  outline-offset: 2px;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.5) !important;
+}
+
+.sub-node-header {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+/* 1. Start 入口节点 */
+.sub-node.start-node {
+  min-width: 130px;
+  border-color: rgba(56, 189, 248, 0.5);
+  background: linear-gradient(135deg, #0c1a2e 0%, #082f49 100%);
+}
+.sub-node.start-node .sub-node-header {
+  border-bottom: none;
+  padding: 10px 14px;
+}
+
+/* 2. Action 复合动作节点 */
+.sub-node.action-node {
+  min-width: 210px;
+  max-width: 280px;
+  border-color: rgba(16, 185, 129, 0.4);
+  background: #0d1e1c;
+}
+.sub-node.action-node .sub-node-header {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+.sub-node.action-node .action-steps-preview {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+}
+.step-preview-item {
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 3. Selector 多路分支节点 */
+.sub-node.selector-node {
+  min-width: 220px;
+  border-color: rgba(168, 85, 247, 0.4);
+  background: #17112b;
+}
+.sub-node.selector-node .sub-node-header {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+}
+
+/* 4. Choice 玩家选项节点 */
+.sub-node.choice-node {
+  min-width: 230px;
+  max-width: 320px;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: #1d1810;
+}
+.sub-node.choice-node .sub-node-header {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+.choice-speech-quote {
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  color: #e2e8f0;
+  line-height: 1.4;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  font-style: italic;
+}
+
+/* 子图行列表（分支 Case 与 选项 Option 行） */
+.sub-node-rows {
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sub-node-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-size: 11px;
+  position: relative;
+  transition: background 0.12s ease;
+}
+.sub-node-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.sub-node-row.default-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 2px;
+  padding-top: 6px;
+  color: #94a3b8;
+}
+
+/* 子图端口位置与交互 */
+.sub-node .node-port {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  z-index: 5;
+  cursor: crosshair;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sub-node .node-port:hover {
+  transform: scale(1.35);
+  box-shadow: 0 0 10px #38bdf8;
+}
+
+.sub-node .port-in {
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #38bdf8;
+}
+.sub-node .port-in:hover {
+  transform: translateY(-50%) scale(1.35);
+}
+
+.sub-node .port-out {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #10b981;
+}
+.sub-node .port-out:hover {
+  transform: translateY(-50%) scale(1.35);
+}
+
+.sub-node-row .port-out {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #f59e0b;
+}
+.sub-node-row .port-out:hover {
+  transform: translateY(-50%) scale(1.35);
+}
+
+/* 幽灵拖拽样式扩展 */
+.node-drag-ghost.ghost-action {
+  background: #0d1e1c;
+  border: 1.5px solid #10b981;
+  color: #fff;
+}
+.node-drag-ghost.ghost-selector {
+  background: #17112b;
+  border: 1.5px solid #a855f7;
+  color: #fff;
+}
+.node-drag-ghost.ghost-choice {
+  background: #1d1810;
+  border: 1.5px solid #f59e0b;
+  color: #fff;
+}
+
+/* 对话弹窗中默认选项的高亮样式 */
+.dialog-btn.default-choice-btn {
+  border: 2px solid #38bdf8 !important;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.6) !important;
+  position: relative;
+}
+.dialog-btn.default-choice-btn::after {
+  content: '★ 默认';
+  position: absolute;
+  top: -9px;
+  right: 6px;
+  font-size: 9px;
+  background: #0284c7;
+  color: #fff;
+  padding: 0 5px;
+  border-radius: 8px;
+  line-height: 14px;
+}
+
+
 
 
 

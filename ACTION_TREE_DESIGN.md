@@ -52,13 +52,16 @@
 - **端口**：
   - 左侧：`1 个 In`（支持多线汇入或循环回跳汇入）
   - 右侧：**每个选项（Option）对应 1 个独立的输出端口 `Out`**。
+- **连入默认选项索引（`defaultOptionIndex`）**：
+  - **所有连入 `Choice` 节点的连线都必须设置默认选中的选项 `index`（默认值为 `0`，即最上面那个选项）**。
+  - 不同上游节点连入同一个 `Choice` 时，可根据各自上下文指定不同的默认焦点选项（例如：从 `Start` 初次进入默认选中第 `0` 项；而从“训练 1 次”动作节点循环回跳连入时，可将默认选中 `index` 设为 `1`，使焦点保持在“训练 1 次”选项上）。
 - **节点内容**：
   - 提问台词配置：说话人（`speaker`）、头衔（`speakerTitle`）、头像（`avatar`）、台词正文（`text`）。
   - 选项列表（`options`）：每项包含按钮文案（`text`）、按钮样式（`primary / secondary / danger`）以及可选的**前置 Trigger 条件（`checks`）**。
 - **运行逻辑**：
-  - 弹出 RPG 选项对话框；若某选项配置了前置 Trigger 条件（如 `金币 >= 100`）且当前不满足，该选项按钮在弹窗中自动**置灰禁用**。
-  - 玩家点击某个可用选项后，沿该选项对应的 `Out` 端口流向下一个节点（若某选项 `Out` 未连线，则点击后直接结束对话）。
-  - 不同选项的后续节点可以连入同一个下游节点的 `In`（合流），也可以连回当前 `Choice` 节点的 `In`（循环加点）。
+  - 弹出 RPG 选项对话框，并根据当前进入该节点的连线所配置的 `defaultOptionIndex`（默认 `0`，即最上面一项）高亮/聚焦默认选项；若某选项配置了前置 Trigger 条件（如 `金币 >= 100`）且当前不满足，该选项按钮在弹窗中自动**置灰禁用**。
+  - 玩家点击（或按确认键选择）某个可用选项后，沿该选项对应的 `Out` 端口流向下一个节点（若某选项 `Out` 未连线，则点击后直接结束对话）。
+  - 不同选项的后续节点可以连入同一个下游节点的 `In`（合流），也可以连回当前 `Choice` 节点的 `In`（循环加点，并保持对应选项的默认选中 `index`）。
 
 ### 3.4 `🎬 Action`（复合动作序列节点）
 - **端口**：
@@ -82,16 +85,16 @@
 
 ```mermaid
 flowchart LR
-  Start(["▶ Start"]) --> ChoiceTrain["💬 Choice: 女仆·小黑<br/>「需要训练一下攻击能力么？」<br/>──────────────────<br/>1. 训练10次 (-100G, +10攻) [需: 金币>=100] ➔<br/>2. 训练1次 (-10G, +1攻) [需: 金币>=10] ➔<br/>3. 稍后再来 (不连线 = 结束)"]
+  Start(["▶ Start"]) -- "默认选中: index 0" --> ChoiceTrain["💬 Choice: 女仆·小黑<br/>「需要训练一下攻击能力么？」<br/>──────────────────<br/>[0] 1. 训练10次 (-100G, +10攻) [需: 金币>=100] ➔<br/>[1] 2. 训练1次 (-10G, +1攻) [需: 金币>=10] ➔<br/>[2] 3. 稍后再来 (不连线 = 结束)"]
 
   ChoiceTrain -- "1. 训练10次" --> Act10["🎬 Action: 强化十次<br/>──────────<br/>➕ hero.gold -100<br/>➕ hero.attack +10"]
   ChoiceTrain -- "2. 训练1次" --> Act1["🎬 Action: 强化一次<br/>──────────<br/>➕ hero.gold -10<br/>➕ hero.attack +1"]
 
-  Act10 -- "Out 连回 Choice.In (循环)" --> ChoiceTrain
-  Act1 -- "Out 连回 Choice.In (循环)" --> ChoiceTrain
+  Act10 -- "Out 连回 Choice.In (默认选中: index 0)" --> ChoiceTrain
+  Act1 -- "Out 连回 Choice.In (默认选中: index 1)" --> ChoiceTrain
 ```
 
-> **玩家体验**：点击“训练 1 次”扣除 10G 并 +1 攻击后，顺着 `Act1` 的 `Out` 连线直接跳回 `ChoiceTrain` 的 `In`，瞬间重新刷新小黑的训练窗口（此时面板上的 `{hero.attack}` 与 `{hero.gold}` 数值已实时更新！），玩家不停点确认即可丝滑连续加攻，直到金币不足按钮置灰或点击“稍后再来”（该选项不连线，直接结束对话）。
+> **玩家体验**：点击“训练 1 次”（`index = 1`）扣除 10G 并 +1 攻击后，顺着 `Act1` 的 `Out` 连线直接跳回 `ChoiceTrain` 的 `In`（该连线设置默认选中 `index = 1`），瞬间重新刷新小黑的训练窗口且焦点保持在“训练 1 次”上（此时面板上的 `{hero.attack}` 与 `{hero.gold}` 数值已实时更新！），玩家不停点确认即可丝滑连续加攻，直到金币不足按钮置灰或点击“稍后再来”（该选项不连线，直接结束对话）。
 
 ---
 
@@ -133,15 +136,17 @@ export interface StartGraphNode {
   type: 'start';
   x: number;
   y: number;
-  nextId?: string;     // Out 端口指向的节点 ID
+  nextId?: string;          // Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
 
 /** 2. 多路条件分支节点 (Selector) */
 export interface SelectorCase {
   id: string;
   title: string;
-  checks: TriggerCheck[]; // 全部满足时命中此分支
-  targetId?: string;      // 该分支 Out 端口指向的节点 ID
+  checks: TriggerCheck[];   // 全部满足时命中此分支
+  targetId?: string;        // 该分支 Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
 
 export interface SelectorGraphNode {
@@ -151,7 +156,8 @@ export interface SelectorGraphNode {
   x: number;
   y: number;
   cases: SelectorCase[];
-  defaultTargetId?: string; // Default 保底出口指向的节点 ID
+  defaultTargetId?: string;    // Default 保底出口指向的节点 ID
+  defaultOptionIndex?: number; // 若 Default 保底目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
 
 /** 3. 玩家选项分流节点 (Choice) */
@@ -161,6 +167,7 @@ export interface ChoiceGraphOption {
   style?: ButtonStyle;
   checks?: TriggerCheck[];  // 选项可用前置条件（基于连入的 Trigger，如 金币 >= 100）
   targetId?: string;        // 该选项 Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
 
 export interface ChoiceGraphNode {
@@ -185,6 +192,7 @@ export interface ActionGraphNode {
   y: number;
   steps: AtomicStep[];      // 顺序执行的 Say / Set / Add 列表
   nextId?: string;          // Out 端口指向的节点 ID（可连向任意后续或前置节点）
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
 }
 
 export type ActionGraphNodeUnion =
@@ -212,7 +220,8 @@ export interface ActionGraph {
    - 每个 `Selector` 的每个分支行右侧、每个 `Choice` 的每个选项行右侧、以及 `Start` 和 `Action` 的右侧均有发光输出端点 `Out`。
    - 点击任意 `Out` 端点再点击目标节点的左侧 `In` 端点即可建立连接：
      - 支持多个 `Out` 连入同一个节点的 `In`（**合流**）；
-     - 支持右侧节点的 `Out` 连回左侧节点的 `In`（**循环回跳**，画布自动绘制平滑绕行弧线，不遮挡卡片文字）。
+     - 支持右侧节点的 `Out` 连回左侧节点的 `In`（**循环回跳**，画布自动绘制平滑绕行弧线，不遮挡卡片文字）；
+     - 当连线目标是 `Choice`（玩家选项）节点时，自动设置该连线的默认选择 `defaultOptionIndex = 0`（默认最上面那个选项），并可在右侧面板中修改为任意选项 `index`。
    - 直接点击已有连线即可一键断开（无弹窗，支持 `Ctrl+Z` 撤销）。
 3. **右侧详情面板联动**：
    - 在子图画布中单击任意节点（`Action` / `Selector` / `Choice`），右侧面板立即切换为该内部节点的专属编辑器（编辑 `Action` 内的对话/赋值步骤列表、配置 `Selector` 分支的 Trigger 阈值、配置 `Choice` 选项等）。

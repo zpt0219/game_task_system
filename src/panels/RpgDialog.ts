@@ -33,17 +33,27 @@ export class RpgDialog {
     this.footerEl.innerHTML = '';
 
     if (config.options && config.options.length > 0) {
-      config.options.forEach((opt) => {
+      const defaultIdx = config.defaultOptionIndex ?? 0;
+      config.options.forEach((opt, idx) => {
         const btn = document.createElement('button');
-        btn.className = `dialog-btn ${opt.className || 'primary-btn'}`;
+        const isDefault = idx === defaultIdx;
+        btn.className = `dialog-btn ${opt.className || 'primary-btn'} ${isDefault ? 'default-choice-btn' : ''}`;
         btn.textContent = opt.text;
         btn.disabled = !!opt.disabled;
+        if (isDefault) {
+          btn.setAttribute('data-default', 'true');
+        }
         btn.onclick = () => {
           if (opt.disabled) return;
           this.close();
           if (opt.onClick) opt.onClick();
         };
         this.footerEl.appendChild(btn);
+        if (isDefault && !opt.disabled) {
+          setTimeout(() => {
+            btn.focus();
+          }, 40);
+        }
       });
     } else {
       const btn = document.createElement('button');

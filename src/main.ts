@@ -79,6 +79,13 @@ async function initApp(): Promise<void> {
           appState.select(null);
           appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
         }
+      } else if (sel.kind === 'subnode') {
+        const node = project.getGraphNode(sel.eventId, sel.id);
+        if (node && node.type !== 'start') {
+          project.deleteGraphNode(sel.eventId, sel.id);
+          appState.select({ kind: 'event', id: sel.eventId });
+          appState.log(`🗑️ 已删除 Action Tree 节点：[${node.id}]（Ctrl+Z 可撤销）`);
+        }
       }
     }
   });

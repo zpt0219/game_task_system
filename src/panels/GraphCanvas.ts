@@ -1,7 +1,12 @@
-import { EventDef, ProjectData, WorldState } from '../core/types';
+import {
+  EventDef,
+  ProjectData,
+  WorldState,
+  ActionGraphNodeUnion
+} from '../core/types';
 import { project, ChangeSource } from '../core/project';
 import { appState } from '../core/state';
-import { evalTrigger, matchBranch, runEvent } from '../core/engine';
+import { evalTrigger, getEventStatus, runEvent } from '../core/engine';
 import { mainGraphEdges, varWriters, varReaders } from '../core/graph';
 import { RpgDialog } from './RpgDialog';
 
@@ -37,9 +42,22 @@ export class GraphCanvas {
   private nodeInitX = 0;
   private nodeInitY = 0;
 
-  private viewMode: 'main' | 'focal' = 'main';
+  private viewMode: 'main' | 'focal' | 'subgraph' = 'main';
   private focalVarKey: string | null = null;
   private focalPositions: Record<string, LayoutPos> = {};
+  private subGraphEventId: string | null = null;
+  private subConnectingSource: {
+    nodeId: string;
+    caseId?: string;
+    isDefault?: boolean;
+    optId?: string;
+  } | null = null;
+
+  private subGraphBanner: HTMLElement;
+  private btnBackFromSubGraph: HTMLElement;
+  private subGraphTitle: HTMLElement;
+  private subGraphNodesCount: HTMLElement;
+  private btnPlayCurrentSubGraph: HTMLElement;
 
   private contextMenuEl: HTMLElement | null = null;
   private connectingTrigId: string | null = null;
@@ -58,18 +76,37 @@ export class GraphCanvas {
     this.focalSourcesCount = document.getElementById('focalSourcesCount') as HTMLElement;
     this.focalTargetsCount = document.getElementById('focalTargetsCount') as HTMLElement;
 
+    this.subGraphBanner = document.getElementById('subGraphBanner') as HTMLElement;
+    this.btnBackFromSubGraph = document.getElementById('btnBackFromSubGraph') as HTMLElement;
+    this.subGraphTitle = document.getElementById('subGraphTitle') as HTMLElement;
+    this.subGraphNodesCount = document.getElementById('subGraphNodesCount') as HTMLElement;
+    this.btnPlayCurrentSubGraph = document.getElementById('btnPlayCurrentSubGraph') as HTMLElement;
+
     this.bindViewportEvents();
     this.bindFocalBannerEvents();
+    this.bindSubGraphBannerEvents();
     this.bindContextMenu();
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.connectingTrigId) {
-        this.cancelConnecting();
+      if (e.key === 'Escape') {
+        if (this.subConnectingSource) {
+          this.cancelSubConnecting();
+        } else if (this.connectingTrigId) {
+          this.cancelConnecting();
+        } else if (this.viewMode === 'subgraph') {
+          appState.setSubGraphEventId(null);
+        } else if (this.viewMode === 'focal') {
+          appState.setFocalVar(null);
+        }
       }
     });
+
     this.viewport.addEventListener('click', () => {
       if (this.connectingTrigId) {
         this.cancelConnecting();
+      }
+      if (this.subConnectingSource) {
+        this.cancelSubConnecting();
       }
     });
 
@@ -80,7 +117,14 @@ export class GraphCanvas {
     appState.onFocalChange((key) => {
       if (key) {
         this.showFocalGraph(key);
-      } else {
+      } else if (this.viewMode === 'focal') {
+        this.showMainGraph();
+      }
+    });
+    appState.onSubGraphChange((eventId) => {
+      if (eventId) {
+        this.showSubGraph(eventId);
+      } else if (this.viewMode === 'subgraph') {
         this.showMainGraph();
       }
     });
@@ -94,7 +138,9 @@ export class GraphCanvas {
   public showMainGraph(): void {
     this.viewMode = 'main';
     this.focalVarKey = null;
+    this.subGraphEventId = null;
     this.focalBanner.classList.add('hidden');
+    this.subGraphBanner.classList.add('hidden');
     this.rebuildDOM();
     this.renderState(appState.getState());
   }
@@ -104,10 +150,47 @@ export class GraphCanvas {
     if (!v) return;
     this.viewMode = 'focal';
     this.focalVarKey = varKey;
+    this.subGraphEventId = null;
+    this.subGraphBanner.classList.add('hidden');
     this.focalBanner.classList.remove('hidden');
+    appState.setSubGraphEventId(null);
     this.rebuildFocalDOM(varKey);
     this.centerFocalView();
     this.renderState(appState.getState());
+  }
+
+  public showSubGraph(eventId: string): void {
+    const ev = project.getEvent(eventId);
+    if (!ev) return;
+    project.ensureActionGraph(ev);
+    this.viewMode = 'subgraph';
+    this.subGraphEventId = eventId;
+    this.focalVarKey = null;
+    this.focalBanner.classList.add('hidden');
+    this.subGraphBanner.classList.remove('hidden');
+
+    this.subGraphTitle.textContent = ev.title;
+    const count = ev.actionGraph?.nodes.length || 0;
+    this.subGraphNodesCount.textContent = `● ${count} 个节点`;
+
+    this.rebuildSubGraphDOM(eventId);
+    this.panX = 60;
+    this.panY = 50;
+    this.zoom = 1.0;
+    this.updateTransform();
+    this.renderState(appState.getState());
+    appState.select({ kind: 'event', id: eventId });
+  }
+
+  private bindSubGraphBannerEvents(): void {
+    this.btnBackFromSubGraph.onclick = () => {
+      appState.setSubGraphEventId(null);
+    };
+    this.btnPlayCurrentSubGraph.onclick = () => {
+      if (this.subGraphEventId) {
+        this.playEvent(this.subGraphEventId);
+      }
+    };
   }
 
   private centerFocalView(): void {
@@ -126,7 +209,17 @@ export class GraphCanvas {
       this.renderEdges(appState.getState());
       return;
     }
-    if (this.viewMode === 'focal' && this.focalVarKey) {
+    if (this.viewMode === 'subgraph' && this.subGraphEventId) {
+      const ev = project.getEvent(this.subGraphEventId);
+      if (ev) {
+        this.subGraphTitle.textContent = ev.title;
+        const count = ev.actionGraph?.nodes.length || 0;
+        this.subGraphNodesCount.textContent = `● ${count} 个节点`;
+        this.rebuildSubGraphDOM(this.subGraphEventId);
+      } else {
+        this.showMainGraph();
+      }
+    } else if (this.viewMode === 'focal' && this.focalVarKey) {
       this.rebuildFocalDOM(this.focalVarKey);
     } else {
       this.rebuildDOM();
@@ -273,6 +366,589 @@ export class GraphCanvas {
     this.updateSelectionHighlight();
   }
 
+  // ------------------------------------------------------------------ DOM 重建 (Sub-Graph Action Tree)
+
+  private rebuildSubGraphDOM(eventId: string): void {
+    this.nodesContainer.innerHTML = '';
+    const ev = project.getEvent(eventId);
+    if (!ev || !ev.actionGraph) return;
+
+    ev.actionGraph.nodes.forEach((node) => {
+      const el = document.createElement('div');
+      el.id = `subnode-${node.id}`;
+      el.dataset.id = node.id;
+      el.dataset.kind = 'subnode';
+      el.style.left = `${node.x}px`;
+      el.style.top = `${node.y}px`;
+
+      switch (node.type) {
+        case 'start': {
+          el.className = 'graph-node sub-node start-node';
+          el.innerHTML = `
+            <div class="sub-node-header">
+              <span>▶ Start</span>
+            </div>
+            <div class="node-port port-out" data-nid="${node.id}" title="连接至下一节点 (点击端点建立连线)"></div>
+          `;
+          el.querySelector('.port-out')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.startSubConnecting(node.id);
+          });
+          break;
+        }
+
+        case 'action': {
+          el.className = 'graph-node sub-node action-node';
+          const stepsHtml = node.steps
+            .map((s) => {
+              if (s.type === 'say')
+                return `<div class="step-preview-item" title="${this.escape(s.text)}">💬 ${this.escape(s.speaker)}: ${this.escape(s.text.slice(0, 16))}</div>`;
+              if (s.type === 'set')
+                return `<div class="step-preview-item">📝 ${this.escape(s.var)} = ${this.escape(String(s.value ?? s.from))}</div>`;
+              if (s.type === 'add')
+                return `<div class="step-preview-item">➕ ${this.escape(s.var)} ${s.amount >= 0 ? '+' : ''}${s.amount}</div>`;
+              return '';
+            })
+            .join('');
+
+          el.innerHTML = `
+            <div class="node-port port-in" data-nid="${node.id}" title="输入端点 (支持多线汇入或循环回跳)"></div>
+            <div class="sub-node-header">
+              <span>${this.escape(node.title || '🎬 Action')}</span>
+              <div class="node-port port-out" data-nid="${node.id}" title="输出端点 (点击建立连线)"></div>
+            </div>
+            <div class="action-steps-preview">
+              ${stepsHtml || '<div class="step-preview-item" style="color:#64748b;">(暂无执行步骤)</div>'}
+            </div>
+          `;
+          el.querySelector('.port-in')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+          });
+          el.querySelector('.port-out')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.startSubConnecting(node.id);
+          });
+          break;
+        }
+
+        case 'selector': {
+          el.className = 'graph-node sub-node selector-node';
+          const casesHtml = node.cases
+            .map((c) => {
+              const checkDesc =
+                c.checks
+                  .map((chk) => {
+                    const t = project.getTrigger(chk.triggerId);
+                    const title = t ? t.title.replace('⚡ trigger: ', '') : chk.triggerId;
+                    const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
+                    return `${title}${opVal}`;
+                  })
+                  .join(' & ') || '无前置规则';
+
+              return `
+              <div class="sub-node-row">
+                <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                  <span style="font-weight:600; color:#e2e8f0;">${this.escape(c.title)}</span>
+                  <span style="color:#94a3b8; font-size:10px; margin-left:4px; font-family:monospace;">[${this.escape(checkDesc)}]</span>
+                </div>
+                <div class="node-port port-out" data-nid="${node.id}" data-caseid="${c.id}" title="分支 [${this.escape(c.title)}] 输出端点"></div>
+              </div>
+            `;
+            })
+            .join('');
+
+          el.innerHTML = `
+            <div class="node-port port-in" data-nid="${node.id}" title="输入端点"></div>
+            <div class="sub-node-header">
+              <span>${this.escape(node.title || '🔀 Selector')}</span>
+            </div>
+            <div class="sub-node-rows">
+              ${casesHtml}
+              <div class="sub-node-row default-row">
+                <span>Default (保底默认)</span>
+                <div class="node-port port-out" data-nid="${node.id}" data-default="true" title="Default 保底输出端点"></div>
+              </div>
+            </div>
+          `;
+          el.querySelector('.port-in')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+          });
+          el.querySelectorAll('.port-out').forEach((p) => {
+            p.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const caseId = (p as HTMLElement).dataset.caseid;
+              const isDefault = (p as HTMLElement).dataset.default === 'true';
+              this.startSubConnecting(node.id, caseId, isDefault);
+            });
+          });
+          break;
+        }
+
+        case 'choice': {
+          el.className = 'graph-node sub-node choice-node';
+          const optionsHtml = node.options
+            .map((o, oIdx) => {
+              const checkDesc =
+                o.checks && o.checks.length > 0
+                  ? o.checks
+                      .map((chk) => {
+                        const t = project.getTrigger(chk.triggerId);
+                        const title = t ? t.title.replace('⚡ trigger: ', '') : chk.triggerId;
+                        const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
+                        return `${title}${opVal}`;
+                      })
+                      .join(' & ')
+                  : '';
+
+              return `
+              <div class="sub-node-row">
+                <div style="display:flex; align-items:center; gap:4px; min-width:0; overflow:hidden;">
+                  <span style="color:#fbbf24; font-weight:700; font-size:10px;">[${oIdx}]</span>
+                  <span style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${this.escape(o.text)}</span>
+                  ${
+                    checkDesc
+                      ? `<span style="font-size:9px; color:#f87171; background:rgba(248,113,113,0.15); padding:1px 4px; border-radius:3px;">需:${this.escape(checkDesc)}</span>`
+                      : ''
+                  }
+                </div>
+                <div class="node-port port-out" data-nid="${node.id}" data-optid="${o.id}" title="选项 [${this.escape(o.text)}] 输出端点"></div>
+              </div>
+            `;
+            })
+            .join('');
+
+          el.innerHTML = `
+            <div class="node-port port-in" data-nid="${node.id}" title="输入端点"></div>
+            <div class="sub-node-header">
+              <span>💬 ${this.escape(node.speaker || 'NPC')}: ${this.escape(node.title || 'Choice')}</span>
+            </div>
+            <div class="choice-speech-quote">“${this.escape(node.text.slice(0, 36))}${node.text.length > 36 ? '...' : ''}”</div>
+            <div class="sub-node-rows">
+              ${optionsHtml}
+            </div>
+          `;
+          el.querySelector('.port-in')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+          });
+          el.querySelectorAll('.port-out').forEach((p) => {
+            p.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const optId = (p as HTMLElement).dataset.optid;
+              this.startSubConnecting(node.id, undefined, undefined, optId);
+            });
+          });
+          break;
+        }
+      }
+
+      this.attachSubNodeInteraction(el, node, eventId);
+      this.nodesContainer.appendChild(el);
+    });
+
+    this.renderEdges(appState.getState());
+    this.updateSelectionHighlight();
+  }
+
+  private attachSubNodeInteraction(el: HTMLElement, node: ActionGraphNodeUnion, eventId: string): void {
+    let hasMoved = false;
+
+    el.onmousedown = (e) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).classList.contains('node-port')) return;
+      e.stopPropagation();
+      hasMoved = false;
+      this.draggingNodeId = node.id;
+      this.dragStartX = e.clientX;
+      this.dragStartY = e.clientY;
+      this.nodeInitX = node.x;
+      this.nodeInitY = node.y;
+
+      const onMouseMove = (moveEv: MouseEvent) => {
+        if (this.draggingNodeId !== node.id) return;
+        const dx = (moveEv.clientX - this.dragStartX) / this.zoom;
+        const dy = (moveEv.clientY - this.dragStartY) / this.zoom;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          hasMoved = true;
+        }
+        const newX = Math.round(this.nodeInitX + dx);
+        const newY = Math.round(this.nodeInitY + dy);
+
+        project.change(
+          (d) => {
+            const ev = d.events.find((x) => x.id === eventId);
+            const targetNode = ev?.actionGraph?.nodes.find((n) => n.id === node.id);
+            if (targetNode) {
+              targetNode.x = newX;
+              targetNode.y = newY;
+            }
+          },
+          'drag',
+          `drag_subnode_${node.id}`
+        );
+
+        el.style.left = `${newX}px`;
+        el.style.top = `${newY}px`;
+        this.renderEdges(appState.getState());
+      };
+
+      const onMouseUp = () => {
+        if (this.draggingNodeId === node.id) {
+          this.draggingNodeId = null;
+        }
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    };
+
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if (hasMoved) return;
+
+      if (this.subConnectingSource) {
+        this.completeSubConnecting(node.id);
+        return;
+      }
+
+      appState.select({ kind: 'subnode', id: node.id, eventId });
+    };
+  }
+
+  private startSubConnecting(
+    sourceNodeId: string,
+    caseId?: string,
+    isDefault?: boolean,
+    optId?: string
+  ): void {
+    this.subConnectingSource = { nodeId: sourceNodeId, caseId, isDefault, optId };
+    const ev = this.subGraphEventId ? project.getEvent(this.subGraphEventId) : null;
+    const node = ev?.actionGraph?.nodes.find((n) => n.id === sourceNodeId);
+    let title = node ? ('title' in node ? node.title : node.id) : sourceNodeId;
+    if (caseId && node?.type === 'selector') {
+      const c = node.cases.find((x) => x.id === caseId);
+      if (c) title += ` ➔ 分支「${c.title}」`;
+    } else if (isDefault) {
+      title += ` ➔ Default (保底)`;
+    } else if (optId && node?.type === 'choice') {
+      const o = node.options.find((x) => x.id === optId);
+      if (o) title += ` ➔ 选项「${o.text}」`;
+    }
+
+    if (!this.connectingBannerEl) {
+      this.connectingBannerEl = document.createElement('div');
+      this.connectingBannerEl.className = 'connecting-banner';
+      this.viewport.appendChild(this.connectingBannerEl);
+    }
+    this.connectingBannerEl.innerHTML = `
+      <span>🔗 正在连线：<b>${this.escape(title)}</b> ➔ 请点击目标节点的 In 端点完成连接</span>
+      <button id="btnCancelConnect" style="background:#334155; border:none; color:#f8fafc; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">取消 (ESC)</button>
+    `;
+    this.connectingBannerEl.style.display = 'flex';
+    this.connectingBannerEl.querySelector('#btnCancelConnect')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cancelSubConnecting();
+    });
+  }
+
+  private cancelSubConnecting(): void {
+    this.subConnectingSource = null;
+    if (this.connectingBannerEl) {
+      this.connectingBannerEl.style.display = 'none';
+    }
+  }
+
+  private completeSubConnecting(targetNodeId: string): void {
+    const src = this.subConnectingSource;
+    this.cancelSubConnecting();
+    if (!src || !this.subGraphEventId) return;
+    const eventId = this.subGraphEventId;
+
+    const ev = project.getEvent(eventId);
+    const targetNode = ev?.actionGraph?.nodes.find((n) => n.id === targetNodeId);
+    if (!targetNode || targetNode.type === 'start') {
+      appState.log('⚠️ 不能将连线连入 Start 入口节点！', true);
+      return;
+    }
+
+    // 核心规则：所有连到玩家选项的都要设置默认的选择 index，默认最上面那个 (0)
+    const defaultOptionIndex = targetNode.type === 'choice' ? 0 : undefined;
+
+    project.change((d) => {
+      const targetEv = d.events.find((e) => e.id === eventId);
+      const graph = targetEv?.actionGraph;
+      if (!graph) return;
+      const sourceNode = graph.nodes.find((n) => n.id === src.nodeId);
+      if (!sourceNode) return;
+
+      if (sourceNode.type === 'start' || sourceNode.type === 'action') {
+        sourceNode.nextId = targetNodeId;
+        sourceNode.defaultOptionIndex = defaultOptionIndex;
+      } else if (sourceNode.type === 'selector') {
+        if (src.isDefault) {
+          sourceNode.defaultTargetId = targetNodeId;
+          sourceNode.defaultOptionIndex = defaultOptionIndex;
+        } else if (src.caseId) {
+          const c = sourceNode.cases.find((x) => x.id === src.caseId);
+          if (c) {
+            c.targetId = targetNodeId;
+            c.defaultOptionIndex = defaultOptionIndex;
+          }
+        }
+      } else if (sourceNode.type === 'choice' && src.optId) {
+        const o = sourceNode.options.find((x) => x.id === src.optId);
+        if (o) {
+          o.targetId = targetNodeId;
+          o.defaultOptionIndex = defaultOptionIndex;
+        }
+      }
+    }, 'structure');
+
+    const targetTitle = 'title' in targetNode ? targetNode.title : (targetNode as ActionGraphNodeUnion).id;
+    appState.log(
+      `🔗 已连接：${src.nodeId} ➔ ${targetTitle}${
+        defaultOptionIndex !== undefined ? ' (默认选项 index: 0)' : ''
+      }`,
+      true
+    );
+  }
+
+  private getPortCanvasPos(portEl: HTMLElement): { x: number; y: number } {
+    const pRect = portEl.getBoundingClientRect();
+    const cRect = this.canvas.getBoundingClientRect();
+    return {
+      x: (pRect.left + pRect.width / 2 - cRect.left) / this.zoom,
+      y: (pRect.top + pRect.height / 2 - cRect.top) / this.zoom
+    };
+  }
+
+  private renderSubGraphEdges(eventId: string): void {
+    const ev = project.getEvent(eventId);
+    if (!ev || !ev.actionGraph) return;
+
+    const sel = appState.getSelection();
+
+    interface SubEdgeItem {
+      sourceNodeId: string;
+      sourcePortEl: HTMLElement | null;
+      targetNodeId: string;
+      title: string;
+      defaultOptionIndex?: number;
+      disconnect: () => void;
+    }
+
+    const edgesToDraw: SubEdgeItem[] = [];
+
+    ev.actionGraph.nodes.forEach((node) => {
+      const nodeEl = document.getElementById(`subnode-${node.id}`);
+      if (!nodeEl) return;
+
+      if (node.type === 'start') {
+        if (node.nextId) {
+          const portEl = nodeEl.querySelector('.port-out') as HTMLElement | null;
+          edgesToDraw.push({
+            sourceNodeId: node.id,
+            sourcePortEl: portEl,
+            targetNodeId: node.nextId,
+            defaultOptionIndex: node.defaultOptionIndex,
+            title: `▶ Start ➔ ${node.nextId}`,
+            disconnect: () => {
+              project.change((d) => {
+                const targetNode = d.events.find((e) => e.id === eventId)?.actionGraph?.nodes.find((n) => n.id === node.id);
+                if (targetNode && targetNode.type === 'start') {
+                  delete targetNode.nextId;
+                  delete targetNode.defaultOptionIndex;
+                }
+              }, 'structure');
+            }
+          });
+        }
+      } else if (node.type === 'action') {
+        if (node.nextId) {
+          const portEl = nodeEl.querySelector('.sub-node-header .port-out') as HTMLElement | null;
+          edgesToDraw.push({
+            sourceNodeId: node.id,
+            sourcePortEl: portEl,
+            targetNodeId: node.nextId,
+            defaultOptionIndex: node.defaultOptionIndex,
+            title: `🎬 ${node.title} ➔ ${node.nextId}`,
+            disconnect: () => {
+              project.change((d) => {
+                const targetNode = d.events.find((e) => e.id === eventId)?.actionGraph?.nodes.find((n) => n.id === node.id);
+                if (targetNode && targetNode.type === 'action') {
+                  delete targetNode.nextId;
+                  delete targetNode.defaultOptionIndex;
+                }
+              }, 'structure');
+            }
+          });
+        }
+      } else if (node.type === 'selector') {
+        node.cases.forEach((c) => {
+          if (c.targetId) {
+            const portEl = nodeEl.querySelector(`.port-out[data-caseid="${c.id}"]`) as HTMLElement | null;
+            edgesToDraw.push({
+              sourceNodeId: node.id,
+              sourcePortEl: portEl,
+              targetNodeId: c.targetId,
+              defaultOptionIndex: c.defaultOptionIndex,
+              title: `🔀 ${node.title} 分支「${c.title}」➔ ${c.targetId}`,
+              disconnect: () => {
+                project.change((d) => {
+                  const targetNode = d.events.find((e) => e.id === eventId)?.actionGraph?.nodes.find((n) => n.id === node.id);
+                  if (targetNode && targetNode.type === 'selector') {
+                    const targetCase = targetNode.cases.find((x) => x.id === c.id);
+                    if (targetCase) {
+                      delete targetCase.targetId;
+                      delete targetCase.defaultOptionIndex;
+                    }
+                  }
+                }, 'structure');
+              }
+            });
+          }
+        });
+        if (node.defaultTargetId) {
+          const portEl = nodeEl.querySelector('.port-out[data-default="true"]') as HTMLElement | null;
+          edgesToDraw.push({
+            sourceNodeId: node.id,
+            sourcePortEl: portEl,
+            targetNodeId: node.defaultTargetId,
+            defaultOptionIndex: node.defaultOptionIndex,
+            title: `🔀 ${node.title} Default保底 ➔ ${node.defaultTargetId}`,
+            disconnect: () => {
+              project.change((d) => {
+                const targetNode = d.events.find((e) => e.id === eventId)?.actionGraph?.nodes.find((n) => n.id === node.id);
+                if (targetNode && targetNode.type === 'selector') {
+                  delete targetNode.defaultTargetId;
+                  delete targetNode.defaultOptionIndex;
+                }
+              }, 'structure');
+            }
+          });
+        }
+      } else if (node.type === 'choice') {
+        node.options.forEach((o) => {
+          if (o.targetId) {
+            const portEl = nodeEl.querySelector(`.port-out[data-optid="${o.id}"]`) as HTMLElement | null;
+            edgesToDraw.push({
+              sourceNodeId: node.id,
+              sourcePortEl: portEl,
+              targetNodeId: o.targetId,
+              defaultOptionIndex: o.defaultOptionIndex,
+              title: `💬 ${node.title} 选项「${o.text}」➔ ${o.targetId}`,
+              disconnect: () => {
+                project.change((d) => {
+                  const targetNode = d.events.find((e) => e.id === eventId)?.actionGraph?.nodes.find((n) => n.id === node.id);
+                  if (targetNode && targetNode.type === 'choice') {
+                    const targetOpt = targetNode.options.find((x) => x.id === o.id);
+                    if (targetOpt) {
+                      delete targetOpt.targetId;
+                      delete targetOpt.defaultOptionIndex;
+                    }
+                  }
+                }, 'structure');
+              }
+            });
+          }
+        });
+      }
+    });
+
+    edgesToDraw.forEach((item) => {
+      const targetEl = document.getElementById(`subnode-${item.targetNodeId}`);
+      if (!targetEl || !item.sourcePortEl) return;
+      const inPortEl = targetEl.querySelector('.port-in') as HTMLElement | null;
+
+      const p1 = this.getPortCanvasPos(item.sourcePortEl);
+      const p2 = inPortEl ? this.getPortCanvasPos(inPortEl) : { x: targetEl.offsetLeft, y: targetEl.offsetTop + 20 };
+
+      const x1 = p1.x;
+      const y1 = p1.y;
+      const x2 = p2.x;
+      const y2 = p2.y;
+
+      let cx1: number, cy1: number, cx2: number, cy2: number;
+      const isLoopBack = x2 <= x1 + 20;
+
+      if (!isLoopBack) {
+        // 常规向前连线
+        const dx = Math.max(40, (x2 - x1) * 0.5);
+        cx1 = x1 + dx;
+        cy1 = y1;
+        cx2 = x2 - dx;
+        cy2 = y2;
+      } else {
+        // 循环回跳连线 (向右引出后环绕回跳至目标左侧 In 端口，避开节点中间文本区域)
+        const loopDx = Math.max(100, Math.abs(x1 - x2) * 0.4);
+        if (y2 <= y1) {
+          const topY = Math.min(y1, y2) - 80;
+          cx1 = x1 + loopDx;
+          cy1 = topY;
+          cx2 = x2 - loopDx;
+          cy2 = topY;
+        } else {
+          const botY = Math.max(y1, y2) + 80;
+          cx1 = x1 + loopDx;
+          cy1 = botY;
+          cx2 = x2 - loopDx;
+          cy2 = botY;
+        }
+      }
+
+      const isHighlight = sel && sel.id && (sel.id === item.sourceNodeId || sel.id === item.targetNodeId);
+
+      const targetNode = ev.actionGraph?.nodes.find((n) => n.id === item.targetNodeId);
+      const defaultInfo = targetNode?.type === 'choice' ? ` [默认选项: ${item.defaultOptionIndex ?? 0}]` : '';
+
+      this.drawSvgPath({
+        d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`,
+        active: true,
+        highlight: !!isHighlight,
+        title: `${item.title}${defaultInfo} (点击断开连线)`,
+        onClick: (e) => {
+          e.stopPropagation();
+          item.disconnect();
+          appState.log(`✂️ 已断开连线：${item.title}（Ctrl+Z 可撤销）`, true);
+        }
+      });
+    });
+  }
+
+  public createSubNodeAt(
+    type: 'action' | 'selector' | 'choice',
+    canvasX: number,
+    canvasY: number
+  ): string | undefined {
+    if (!this.subGraphEventId) return undefined;
+    if (appState.getMode() !== 'edit') {
+      appState.setMode('edit');
+    }
+    const node = project.addGraphNode(this.subGraphEventId, type, canvasX, canvasY);
+    if (node) {
+      appState.select({ kind: 'subnode', id: node.id, eventId: this.subGraphEventId });
+      const nodeTitle = 'title' in node ? node.title : node.id;
+      appState.log(`✨ 新建 Action Tree 节点：[${nodeTitle}]`, true);
+      this.pulseNode(node.id);
+      return node.id;
+    }
+    return undefined;
+  }
+
+  public createSubNodeAtCenter(type: 'action' | 'selector' | 'choice'): string | undefined {
+    const center = this.getViewportCenterCanvasPos();
+    const ev = this.subGraphEventId ? project.getEvent(this.subGraphEventId) : null;
+    const count = ev?.actionGraph?.nodes.length || 0;
+    const stagger = (count % 8) * 16;
+    const x = Math.round(center.x - 90 + stagger);
+    const y = Math.round(center.y - 30 + stagger);
+    return this.createSubNodeAt(type, x, y);
+  }
+
   private createFocalEventElement(ev: EventDef, x: number, y: number): HTMLElement {
     const el = document.createElement('div');
     el.id = `node-${ev.id}`;
@@ -306,44 +982,49 @@ export class GraphCanvas {
       const pos = this.getNodePos(id);
       this.nodeInitX = pos.x;
       this.nodeInitY = pos.y;
+
+      const onMouseMove = (moveEv: MouseEvent) => {
+        if (this.draggingNodeId !== id) return;
+        const dx = (moveEv.clientX - this.dragStartX) / this.zoom;
+        const dy = (moveEv.clientY - this.dragStartY) / this.zoom;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          hasMoved = true;
+        }
+        const newX = Math.round(this.nodeInitX + dx);
+        const newY = Math.round(this.nodeInitY + dy);
+
+        if (this.viewMode === 'focal') {
+          this.focalPositions[id] = { x: newX, y: newY };
+        } else {
+          project.change(
+            (d) => {
+              const node = kind === 'event' ? d.events.find((x) => x.id === id) : d.triggers.find((x) => x.id === id);
+              if (node) {
+                node.x = newX;
+                node.y = newY;
+              }
+            },
+            'drag',
+            `drag_${id}`
+          );
+        }
+
+        el.style.left = `${newX}px`;
+        el.style.top = `${newY}px`;
+        this.renderEdges(appState.getState());
+      };
+
+      const onMouseUp = () => {
+        if (this.draggingNodeId === id) {
+          this.draggingNodeId = null;
+        }
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
     };
-
-    window.addEventListener('mousemove', (e) => {
-      if (this.draggingNodeId !== id) return;
-      const dx = (e.clientX - this.dragStartX) / this.zoom;
-      const dy = (e.clientY - this.dragStartY) / this.zoom;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        hasMoved = true;
-      }
-      const newX = Math.round(this.nodeInitX + dx);
-      const newY = Math.round(this.nodeInitY + dy);
-
-      if (this.viewMode === 'focal') {
-        this.focalPositions[id] = { x: newX, y: newY };
-      } else {
-        project.change(
-          (d) => {
-            const node = kind === 'event' ? d.events.find((x) => x.id === id) : d.triggers.find((x) => x.id === id);
-            if (node) {
-              node.x = newX;
-              node.y = newY;
-            }
-          },
-          'drag',
-          `drag_${id}`
-        );
-      }
-
-      el.style.left = `${newX}px`;
-      el.style.top = `${newY}px`;
-      this.renderEdges(appState.getState());
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (this.draggingNodeId === id) {
-        this.draggingNodeId = null;
-      }
-    });
 
     el.onclick = (e) => {
       e.stopPropagation();
@@ -362,11 +1043,16 @@ export class GraphCanvas {
       }
     };
 
-    // 双击始终触发试玩（哪怕在编辑模式下也能快速测试）
+    // 双击：编辑模式下双击 Event 进入 Action Tree 内部图谱；Play 模式下触发试玩
     el.ondblclick = (e) => {
       e.stopPropagation();
       if (kind === 'event') {
-        this.playEvent(id);
+        if (appState.getMode() === 'edit') {
+          appState.setSubGraphEventId(id);
+          appState.log(`🕸️ 已进入「${project.getEvent(id)?.title}」内部 Action Tree 图谱`, true);
+        } else {
+          this.playEvent(id);
+        }
       }
     };
   }
@@ -423,7 +1109,7 @@ export class GraphCanvas {
       const targetEv = d.events.find((x) => x.id === evId);
       if (targetEv) {
         if (!targetEv.incomingTriggers) {
-          targetEv.incomingTriggers = Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
+          targetEv.incomingTriggers = [];
         }
         if (!targetEv.incomingTriggers.includes(chosenTrigId)) {
           targetEv.incomingTriggers.push(chosenTrigId);
@@ -458,29 +1144,20 @@ export class GraphCanvas {
       el.classList.toggle('unsatisfied', !ok);
     });
 
-    // 2. Event 状态（根据当前匹配到的分支展示 status pill）
+    // 2. Event 状态（根据当前动作树预计命中的逻辑分支展示 status pill）
     p.events.forEach((ev) => {
       const el = document.getElementById(`node-${ev.id}`);
       if (!el) return;
       const pill = el.querySelector('.status-pill') as HTMLElement | null;
-      const branch = matchBranch(p, state, ev);
-      const title = branch ? branch.title : '无匹配分支';
+      const st = getEventStatus(p, state, ev);
 
       if (pill) {
-        pill.textContent = title;
-        pill.className = 'event-status-pill status-pill';
-        if (!branch) {
-          pill.classList.add('status-red');
-        } else if (title.includes('拦截') || title.includes('提醒') || title.includes('远眺')) {
-          pill.classList.add('status-amber');
-        } else if (title.includes('已') || title.includes('通') || title.includes('常驻')) {
-          pill.classList.add('status-blue');
-        } else {
-          pill.classList.add('status-green');
-        }
+        pill.textContent = st.title;
+        pill.className = `event-status-pill status-pill ${st.colorClass}`;
       }
-      el.classList.toggle('available', !!branch);
-      el.classList.toggle('locked', !branch);
+      const isAvailable = st.colorClass !== 'status-red';
+      el.classList.toggle('available', isAvailable);
+      el.classList.toggle('locked', !isAvailable);
     });
 
     // 3. Focal 模式下更新 Banner
@@ -527,7 +1204,9 @@ export class GraphCanvas {
     const p = project.get();
     const sel = appState.getSelection();
 
-    if (this.viewMode === 'focal' && this.focalVarKey) {
+    if (this.viewMode === 'subgraph' && this.subGraphEventId) {
+      this.renderSubGraphEdges(this.subGraphEventId);
+    } else if (this.viewMode === 'focal' && this.focalVarKey) {
       this.renderFocalEdges(p, state, sel);
     } else {
       this.renderMainEdges(p, state, sel);
@@ -607,17 +1286,7 @@ export class GraphCanvas {
         title: `${trig.title} ➔ 改变行为：${ev.title} (点击可断开连线)`,
         onClick: (e) => {
           e.stopPropagation();
-          project.change((d) => {
-            const targetEv = d.events.find((x) => x.id === edge.to);
-            if (targetEv) {
-              const incoming =
-                targetEv.incomingTriggers ?? Array.from(new Set(targetEv.branches.flatMap((b) => b.when)));
-              targetEv.incomingTriggers = incoming.filter((t) => t !== edge.from);
-              targetEv.branches.forEach((b) => {
-                b.when = b.when.filter((w) => w !== edge.from);
-              });
-            }
-          }, 'structure');
+          project.disconnectTrigger(edge.to, edge.from);
           appState.log(`✂️ 已断开连线：${trig.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
         }
       });
@@ -770,7 +1439,7 @@ export class GraphCanvas {
       });
       d.events.forEach((e) => {
         // 判断放在左栏还是右栏：被 trigger 控制的放右栏，起始 source 放左栏
-        const hasInputs = e.branches.some((b) => b.when.length > 0);
+        const hasInputs = (e.incomingTriggers?.length ?? 0) > 0;
         if (hasInputs) {
           e.x = 860;
           e.y = 120 + evRightIdx * 120;
@@ -831,7 +1500,7 @@ export class GraphCanvas {
 
   public pulseNode(id: string): void {
     requestAnimationFrame(() => {
-      const el = document.getElementById(`node-${id}`);
+      const el = document.getElementById(`node-${id}`) || document.getElementById(`subnode-${id}`);
       if (!el) return;
       el.classList.remove('node-spawn-pulse');
       void el.offsetWidth;
@@ -918,7 +1587,11 @@ export class GraphCanvas {
         e.target === this.svgEdges ||
         e.target === this.nodesContainer
       ) {
-        appState.select(null);
+        if (this.viewMode === 'subgraph' && this.subGraphEventId) {
+          appState.select({ kind: 'event', id: this.subGraphEventId });
+        } else {
+          appState.select(null);
+        }
         this.closeContextMenu();
       }
     };
@@ -978,19 +1651,37 @@ export class GraphCanvas {
     menu.style.left = `${sx}px`;
     menu.style.top = `${sy}px`;
 
-    menu.innerHTML = `
-      <div class="ctx-item" data-action="add-event">💬 新建 Event 对话/事件节点</div>
-      <div class="ctx-item" data-action="add-trigger">⚡ 新建 Trigger 条件判断器</div>
-      <div class="ctx-divider"></div>
-      <div class="ctx-item" data-action="reset-layout">📐 恢复标准排列布局</div>
-    `;
+    if (this.viewMode === 'subgraph') {
+      menu.innerHTML = `
+        <div class="ctx-item" data-action="add-sub-action">🎬 新建复合动作 Action</div>
+        <div class="ctx-item" data-action="add-sub-selector">🔀 新建条件分支 Selector</div>
+        <div class="ctx-item" data-action="add-sub-choice">💬 新建玩家选项 Choice</div>
+        <div class="ctx-divider"></div>
+        <div class="ctx-item" data-action="back-to-main">← 返回全局大图 (ESC)</div>
+      `;
+    } else {
+      menu.innerHTML = `
+        <div class="ctx-item" data-action="add-event">💬 新建 Event 对话/事件节点</div>
+        <div class="ctx-item" data-action="add-trigger">⚡ 新建 Trigger 条件判断器</div>
+        <div class="ctx-divider"></div>
+        <div class="ctx-item" data-action="reset-layout">📐 恢复标准排列布局</div>
+      `;
+    }
 
     menu.querySelectorAll('.ctx-item').forEach((item) => {
       (item as HTMLElement).onclick = (e) => {
         e.stopPropagation();
         const action = (item as HTMLElement).dataset.action;
         this.closeContextMenu();
-        if (action === 'add-event') {
+        if (action === 'add-sub-action') {
+          this.createSubNodeAt('action', cx, cy);
+        } else if (action === 'add-sub-selector') {
+          this.createSubNodeAt('selector', cx, cy);
+        } else if (action === 'add-sub-choice') {
+          this.createSubNodeAt('choice', cx, cy);
+        } else if (action === 'back-to-main') {
+          appState.setSubGraphEventId(null);
+        } else if (action === 'add-event') {
           const ev = project.addEvent(cx, cy);
           appState.select({ kind: 'event', id: ev.id });
           appState.log(`✨ 新建 Event 节点：[${ev.title}]`, true);

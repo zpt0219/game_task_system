@@ -89,15 +89,93 @@ export interface AddStep {
 export type Step = SayStep | ChoiceStep | SetStep | AddStep;
 export type StepType = Step['type'];
 
-/** 分支：when 中所有 Trigger 都满足时匹配；when 为空表示默认行为 */
-export interface Branch {
-  id: string;
-  title: string;
-  when: string[];
-  steps: Step[];
+/** 复合 Action 节点内的原子步骤（不含嵌套分支） */
+export type AtomicStep = SayStep | SetStep | AddStep;
+
+/** 内部节点对已连入 Trigger 的具体判断规则 */
+export interface TriggerCheck {
+  triggerId: string;   // 必须属于当前 Event 的 incomingTriggers
+  op?: CompareOp;      // 比较符（如 '==', '!=', '>=', '<='），默认使用 Trigger 主条件的比较符
+  value?: VarValue;    // 比较阈值（如 true, false, 100, 10）
 }
 
-/** Event 节点：玩家可触发；从上到下匹配第一个满足的分支 */
+/** 1. 入口节点 (Start) */
+export interface StartGraphNode {
+  id: string;
+  type: 'start';
+  x: number;
+  y: number;
+  nextId?: string;             // Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0，即最上面那个）
+}
+
+/** 2. 多路条件分支节点 (Selector) */
+export interface SelectorCase {
+  id: string;
+  title: string;
+  checks: TriggerCheck[];      // 全部满足时命中此分支
+  targetId?: string;           // 该分支 Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0）
+}
+
+export interface SelectorGraphNode {
+  id: string;
+  type: 'selector';
+  title: string;
+  x: number;
+  y: number;
+  cases: SelectorCase[];
+  defaultTargetId?: string;    // Default 保底出口指向的节点 ID
+  defaultOptionIndex?: number; // 若 Default 保底目标为 Choice 节点，指定默认选中的选项 index（默认 0）
+}
+
+/** 3. 玩家选项分流节点 (Choice) */
+export interface ChoiceGraphOption {
+  id: string;
+  text: string;
+  style?: ButtonStyle;
+  checks?: TriggerCheck[];     // 选项可用前置条件（基于连入的 Trigger，如 金币 >= 100）
+  targetId?: string;           // 该选项 Out 端口指向的节点 ID
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0）
+}
+
+export interface ChoiceGraphNode {
+  id: string;
+  type: 'choice';
+  title: string;
+  x: number;
+  y: number;
+  speaker: string;
+  speakerTitle?: string;
+  avatar?: string;
+  text: string;
+  options: ChoiceGraphOption[];
+}
+
+/** 4. 复合动作序列节点 (Action) */
+export interface ActionGraphNode {
+  id: string;
+  type: 'action';
+  title: string;
+  x: number;
+  y: number;
+  steps: AtomicStep[];         // 顺序执行的 Say / Set / Add 列表
+  nextId?: string;             // Out 端口指向的节点 ID（可连向任意后续或前置节点）
+  defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0）
+}
+
+export type ActionGraphNodeUnion =
+  | StartGraphNode
+  | SelectorGraphNode
+  | ChoiceGraphNode
+  | ActionGraphNode;
+
+/** Event 内部子图结构 */
+export interface ActionGraph {
+  nodes: ActionGraphNodeUnion[];
+}
+
+/** Event 节点：玩家可触发；其内部由 Action Tree 有向流图控制 */
 export interface EventDef {
   id: string;
   title: string;
@@ -106,7 +184,7 @@ export interface EventDef {
   x: number;
   y: number;
   incomingTriggers?: string[]; // 连入此 Event 的 Trigger ID 列表 (输入信号)
-  branches: Branch[];
+  actionGraph: ActionGraph;    // 事件内部 Action Tree 有向流图
 }
 
 export interface PresetDef {
@@ -134,6 +212,7 @@ export type Selection =
   | { kind: 'event'; id: string }
   | { kind: 'trigger'; id: string }
   | { kind: 'var'; id: string }
+  | { kind: 'subnode'; id: string; eventId: string }
   | null;
 
 export interface DialogOption {
@@ -151,6 +230,7 @@ export interface DialogConfig {
   confirmText?: string;
   onConfirm?: () => void;
   options?: DialogOption[];
+  defaultOptionIndex?: number; // 默认高亮/聚焦的选项索引
 }
 
 export type EditorMode = 'play' | 'edit';

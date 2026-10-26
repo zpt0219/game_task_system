@@ -9,6 +9,11 @@ export class Header {
   private redoBtn: HTMLButtonElement;
   private addEventBtn: HTMLButtonElement;
   private addTriggerBtn: HTMLButtonElement;
+  private mainGraphTools: HTMLElement | null;
+  private subGraphTools: HTMLElement | null;
+  private addActionBtn: HTMLButtonElement | null;
+  private addSelectorBtn: HTMLButtonElement | null;
+  private addChoiceBtn: HTMLButtonElement | null;
   private presetSelect: HTMLSelectElement;
   private resetBtn: HTMLButtonElement;
   private resetLayoutBtn: HTMLButtonElement | null;
@@ -26,6 +31,11 @@ export class Header {
     this.redoBtn = document.getElementById('btnRedo') as HTMLButtonElement;
     this.addEventBtn = document.getElementById('btnAddEventHeader') as HTMLButtonElement;
     this.addTriggerBtn = document.getElementById('btnAddTriggerHeader') as HTMLButtonElement;
+    this.mainGraphTools = document.getElementById('mainGraphTools');
+    this.subGraphTools = document.getElementById('subGraphTools');
+    this.addActionBtn = document.getElementById('btnAddActionHeader') as HTMLButtonElement | null;
+    this.addSelectorBtn = document.getElementById('btnAddSelectorHeader') as HTMLButtonElement | null;
+    this.addChoiceBtn = document.getElementById('btnAddChoiceHeader') as HTMLButtonElement | null;
     this.presetSelect = document.getElementById('presetSelect') as HTMLSelectElement;
     this.resetBtn = document.getElementById('btnResetState') as HTMLButtonElement;
     this.resetLayoutBtn = document.getElementById('btnResetLayout') as HTMLButtonElement | null;
@@ -42,6 +52,18 @@ export class Header {
       } else {
         this.editBtn.classList.add('active');
         this.playBtn.classList.remove('active');
+      }
+    });
+
+    appState.onSubGraphChange((subEventId) => {
+      if (this.mainGraphTools && this.subGraphTools) {
+        if (subEventId) {
+          this.mainGraphTools.style.display = 'none';
+          this.subGraphTools.style.display = 'flex';
+        } else {
+          this.mainGraphTools.style.display = 'flex';
+          this.subGraphTools.style.display = 'none';
+        }
       }
     });
 
@@ -109,6 +131,11 @@ export class Header {
     // 绑定 Event / Trigger 的按住拖拽生成与快捷点击创建
     this.setupNodeDragCreation(this.addEventBtn, 'event');
     this.setupNodeDragCreation(this.addTriggerBtn, 'trigger');
+
+    // 绑定 Action Tree 子图节点的按住拖拽生成与快捷点击创建
+    if (this.addActionBtn) this.setupSubNodeDragCreation(this.addActionBtn, 'action');
+    if (this.addSelectorBtn) this.setupSubNodeDragCreation(this.addSelectorBtn, 'selector');
+    if (this.addChoiceBtn) this.setupSubNodeDragCreation(this.addChoiceBtn, 'choice');
 
     this.presetSelect.onchange = (e) => {
       const targetId = (e.target as HTMLSelectElement).value;
@@ -286,6 +313,145 @@ export class Header {
       } else {
         if (type === 'event' && this.onAddEvent) this.onAddEvent();
         if (type === 'trigger' && this.onAddTrigger) this.onAddTrigger();
+      }
+    });
+  }
+
+  private setupSubNodeDragCreation(
+    btn: HTMLButtonElement,
+    type: 'action' | 'selector' | 'choice'
+  ): void {
+    let isMouseDown = false;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let ghostEl: HTMLElement | null = null;
+    let justDragged = false;
+
+    btn.addEventListener('dragstart', (e) => e.preventDefault());
+
+    const cleanup = () => {
+      if (!isMouseDown && !isDragging) return;
+      isMouseDown = false;
+      isDragging = false;
+      btn.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('blur', cleanup);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (ghostEl) {
+        ghostEl.remove();
+        ghostEl = null;
+      }
+      if (this.canvas) {
+        this.canvas.setDragOverState(false);
+      }
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      isMouseDown = true;
+      isDragging = false;
+      justDragged = false;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('blur', cleanup);
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isMouseDown) return;
+
+      if (!isDragging) {
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (dist > 4) {
+          isDragging = true;
+          justDragged = true;
+          btn.classList.add('dragging');
+          document.body.style.cursor = 'grabbing';
+          document.body.style.userSelect = 'none';
+
+          ghostEl = document.createElement('div');
+          ghostEl.className = `node-drag-ghost ghost-${type} compact-node`;
+
+          const titles: Record<string, string> = {
+            action: '🎬 复合动作 Action',
+            selector: '🔀 条件分支 Selector',
+            choice: '💬 玩家选项 Choice'
+          };
+
+          ghostEl.innerHTML = `
+            <div class="node-title">${titles[type]}</div>
+            <span class="ghost-hint-badge">拖拽中...</span>
+          `;
+          document.body.appendChild(ghostEl);
+        }
+      }
+
+      if (isDragging && ghostEl) {
+        ghostEl.style.left = `${e.clientX}px`;
+        ghostEl.style.top = `${e.clientY}px`;
+
+        const badgeEl = ghostEl.querySelector('.ghost-hint-badge');
+        if (this.canvas && this.canvas.isInsideViewport(e.clientX, e.clientY)) {
+          ghostEl.classList.add('is-inside-canvas');
+          this.canvas.setDragOverState(true);
+          const cPos = this.canvas.clientToCanvasPos(e.clientX, e.clientY);
+          const nx = Math.round(cPos.x - 80);
+          const ny = Math.round(cPos.y - 20);
+          if (badgeEl) {
+            badgeEl.textContent = `🎯 释放放置 (${nx}, ${ny})`;
+          }
+        } else {
+          ghostEl.classList.remove('is-inside-canvas');
+          if (this.canvas) this.canvas.setDragOverState(false);
+          if (badgeEl) {
+            badgeEl.textContent = `拖至中间画布以放置`;
+          }
+        }
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isMouseDown) return;
+
+      const wasDragging = isDragging;
+      cleanup();
+
+      if (wasDragging) {
+        if (this.canvas && this.canvas.isInsideViewport(e.clientX, e.clientY)) {
+          const cPos = this.canvas.clientToCanvasPos(e.clientX, e.clientY);
+          const nx = Math.round(cPos.x - 80);
+          const ny = Math.round(cPos.y - 20);
+          this.canvas.createSubNodeAt(type, nx, ny);
+        }
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cleanup();
+        isDragging = false;
+        justDragged = true;
+      }
+    };
+
+    btn.addEventListener('mousedown', onMouseDown);
+
+    btn.addEventListener('click', (e) => {
+      if (justDragged) {
+        justDragged = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (this.canvas) {
+        this.canvas.createSubNodeAtCenter(type);
       }
     });
   }

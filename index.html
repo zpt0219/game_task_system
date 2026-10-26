@@ -31,13 +31,27 @@
       <button id="btnUndo" class="btn-icon" title="撤销 (Ctrl+Z)"><span>↺</span></button>
       <button id="btnRedo" class="btn-icon" title="重做 (Ctrl+Y)"><span>↻</span></button>
 
-      <!-- 快捷添加节点（支持左键按住拖拽至画布放置，亦可直接点击） -->
-      <button id="btnAddEventHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】鼠标左键按住拖入画布任意位置放置，或直接点击新建">
-        <span>+💬</span> Event
-      </button>
-      <button id="btnAddTriggerHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】鼠标左键按住拖入画布任意位置放置，或直接点击新建">
-        <span>+⚡</span> Trigger
-      </button>
+      <!-- 快捷添加节点（主图模式与子图模式切换） -->
+      <div id="mainGraphTools" style="display: flex; gap: 6px; align-items: center;">
+        <button id="btnAddEventHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】鼠标左键按住拖入画布任意位置放置，或直接点击新建">
+          <span>+💬</span> Event
+        </button>
+        <button id="btnAddTriggerHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】鼠标左键按住拖入画布任意位置放置，或直接点击新建">
+          <span>+⚡</span> Trigger
+        </button>
+      </div>
+
+      <div id="subGraphTools" style="display: none; gap: 6px; align-items: center;">
+        <button id="btnAddActionHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】按住拖入画布放置，或点击新建复合动作节点">
+          <span>+🎬</span> Action
+        </button>
+        <button id="btnAddSelectorHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】按住拖入画布放置，或点击新建条件分支节点">
+          <span>+🔀</span> Selector
+        </button>
+        <button id="btnAddChoiceHeader" class="btn-icon btn-draggable-node" title="【拖拽创建】按住拖入画布放置，或点击新建玩家选项节点">
+          <span>+💬</span> Choice
+        </button>
+      </div>
 
       <!-- 预设与状态控制 -->
       <select id="presetSelect" class="preset-select" title="快速切换测试预设"></select>
@@ -244,6 +258,24 @@
         <div class="focal-meta">
           <span id="focalSourcesCount">📥 1个来源</span>
           <span id="focalTargetsCount">📤 1个后续触发</span>
+          <span class="kbd-hint">ESC 退出</span>
+        </div>
+      </div>
+
+      <!-- Action Tree 子图导航顶栏浮标 -->
+      <div id="subGraphBanner" class="focal-banner sub-graph-banner hidden">
+        <button id="btnBackFromSubGraph" class="back-main-btn" title="返回全局大图 (快捷键: Esc)">
+          <span class="btn-arrow">←</span> 返回全局大图
+        </button>
+        <div class="focal-info">
+          <span class="focal-tag" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: rgba(168, 85, 247, 0.4);">Action Tree 内部子图</span>
+          <span id="subGraphTitle" class="focal-title">⚔️ 事件名称</span>
+          <span id="subGraphNodesCount" class="focal-status-pill status-pill status-blue">● 0 个节点</span>
+        </div>
+        <div class="focal-meta" style="display: flex; align-items: center; gap: 10px;">
+          <button id="btnPlayCurrentSubGraph" class="mini-btn-action" style="font-size: 12px; padding: 4px 10px; background: #10b981; border: none; color: #fff; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+            <span>▶</span> 立即试玩此事件
+          </button>
           <span class="kbd-hint">ESC 退出</span>
         </div>
       </div>

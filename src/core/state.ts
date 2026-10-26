@@ -4,6 +4,7 @@ export type StateListener = (state: WorldState) => void;
 export type ModeListener = (mode: EditorMode) => void;
 export type SelectionListener = (sel: Selection) => void;
 export type FocalListener = (varKey: string | null) => void;
+export type SubGraphListener = (eventId: string | null) => void;
 export type LogListener = (message: string, isHighlight: boolean) => void;
 
 /** 根据项目变量定义生成初始世界状态，可叠加预设覆盖值 */
@@ -20,11 +21,13 @@ class AppState {
   private mode: EditorMode = 'play';
   private selection: Selection = null;
   private focalVar: string | null = null;
+  private subGraphEventId: string | null = null;
 
   private stateListeners = new Set<StateListener>();
   private modeListeners = new Set<ModeListener>();
   private selectionListeners = new Set<SelectionListener>();
   private focalListeners = new Set<FocalListener>();
+  private subGraphListeners = new Set<SubGraphListener>();
   private logListeners = new Set<LogListener>();
 
   public getState(): WorldState {
@@ -71,6 +74,16 @@ class AppState {
     this.focalListeners.forEach((fn) => fn(key));
   }
 
+  public getSubGraphEventId(): string | null {
+    return this.subGraphEventId;
+  }
+
+  public setSubGraphEventId(id: string | null): void {
+    if (this.subGraphEventId === id) return;
+    this.subGraphEventId = id;
+    this.subGraphListeners.forEach((fn) => fn(id));
+  }
+
   public log(message: string, isHighlight = false): void {
     this.logListeners.forEach((fn) => fn(message, isHighlight));
   }
@@ -93,6 +106,11 @@ class AppState {
   public onFocalChange(fn: FocalListener): () => void {
     this.focalListeners.add(fn);
     return () => this.focalListeners.delete(fn);
+  }
+
+  public onSubGraphChange(fn: SubGraphListener): () => void {
+    this.subGraphListeners.add(fn);
+    return () => this.subGraphListeners.delete(fn);
   }
 
   public onLog(fn: LogListener): () => void {
