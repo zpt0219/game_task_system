@@ -132,98 +132,6 @@
       "desc": "走出大门，解锁【郊外与海滩】"
     }
   ],
-  "triggers": [
-    {
-      "id": "trig_has_book",
-      "title": "⚡ trigger: 持有冒险书",
-      "desc": "改变国王（日常指引 / 劝离公主）与离开城堡大门（门禁 1）的行为。",
-      "x": 460,
-      "y": 100,
-      "match": "all",
-      "conds": [
-        {
-          "var": "items.book",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_castle_tp",
-      "title": "⚡ trigger: 传送点已激活",
-      "desc": "改变离开城堡大门（门禁 2）的行为。",
-      "x": 441,
-      "y": 223,
-      "match": "all",
-      "conds": [
-        {
-          "var": "teleports.castle",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_princess_in_party",
-      "title": "⚡ trigger: 公主在队伍",
-      "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
-      "x": 443,
-      "y": 352,
-      "match": "all",
-      "conds": [
-        {
-          "var": "party.princess",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_castle_exited",
-      "title": "⚡ trigger: 已离开城堡",
-      "desc": "改变下个区域（郊外与海滩）的行为：未出城时为远眺，出城后开放。",
-      "x": 1220,
-      "y": 170,
-      "match": "all",
-      "conds": [
-        {
-          "var": "regions.castle_exited",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_has_hp_gem",
-      "title": "⚡ trigger: 持有生命宝珠",
-      "desc": "改变女仆·小绿的行为：生命强化效果翻倍。",
-      "x": 640,
-      "y": 690,
-      "match": "all",
-      "conds": [
-        {
-          "var": "items.hp_gem",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_gold",
-      "title": "⚡ trigger: 金币",
-      "desc": "改变女仆小黑、小白、小绿的行为：金币满足时开放能力强化训练。",
-      "x": 340,
-      "y": 450,
-      "match": "all",
-      "conds": [
-        {
-          "var": "hero.gold",
-          "op": ">=",
-          "value": 10
-        }
-      ]
-    }
-  ],
   "events": [
     {
       "id": "evt_king",
@@ -232,10 +140,6 @@
       "desc": "王城最高统治者。初见赐予冒险书与地图；之后给出日常指引；公主在队时可劝说公主离队。",
       "x": 60,
       "y": 100,
-      "incomingTriggers": [
-        "trig_has_book",
-        "trig_princess_in_party"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -258,14 +162,14 @@
                 "title": "持有冒险书 且 公主在队",
                 "checks": [
                   {
-                    "triggerId": "trig_has_book",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_has_book"
                   },
                   {
-                    "triggerId": "trig_princess_in_party",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
                   }
                 ],
                 "targetId": "choice_king_princess",
@@ -276,9 +180,9 @@
                 "title": "持有冒险书",
                 "checks": [
                   {
-                    "triggerId": "trig_has_book",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_has_book"
                   }
                 ],
                 "targetId": "act_king_guide",
@@ -399,7 +303,11 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_has_book",
+        "cond_princess_in_party"
+      ]
     },
     {
       "id": "evt_statue_castle",
@@ -408,7 +316,6 @@
       "desc": "王城内的远古女神雕像。初次祈祷激活王城传送点。",
       "x": 60,
       "y": 240,
-      "incomingTriggers": [],
       "actionGraph": {
         "nodes": [
           {
@@ -442,7 +349,8 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_exit_castle",
@@ -451,10 +359,6 @@
       "desc": "城堡出口门禁。需同时持有冒险书并激活传送点，否则公主会在门前提醒。",
       "x": 820,
       "y": 170,
-      "incomingTriggers": [
-        "trig_has_book",
-        "trig_castle_tp"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -477,14 +381,14 @@
                 "title": "书与传送点齐全",
                 "checks": [
                   {
-                    "triggerId": "trig_has_book",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_has_book"
                   },
                   {
-                    "triggerId": "trig_castle_tp",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_castle_tp"
                   }
                 ],
                 "targetId": "act_exit_pass",
@@ -495,9 +399,9 @@
                 "title": "持有冒险书 (缺传送点)",
                 "checks": [
                   {
-                    "triggerId": "trig_has_book",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_has_book"
                   }
                 ],
                 "targetId": "act_exit_need_tp",
@@ -564,7 +468,11 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_has_book",
+        "cond_castle_tp"
+      ]
     },
     {
       "id": "evt_princess_join",
@@ -573,7 +481,6 @@
       "desc": "城内闲逛的紫水晶公主。可邀请入队（熔断噩梦成就）。",
       "x": 60,
       "y": 380,
-      "incomingTriggers": [],
       "actionGraph": {
         "nodes": [
           {
@@ -656,7 +563,8 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_princess_bed",
@@ -665,9 +573,6 @@
       "desc": "公主寝宫里的床铺。默认只是观察；公主在队时可就寝回满 HP。",
       "x": 820,
       "y": 320,
-      "incomingTriggers": [
-        "trig_princess_in_party"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -690,9 +595,9 @@
                 "title": "公主在队伍中",
                 "checks": [
                   {
-                    "triggerId": "trig_princess_in_party",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
                   }
                 ],
                 "targetId": "choice_bed_rest",
@@ -773,7 +678,10 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_princess_in_party"
+      ]
     },
     {
       "id": "evt_clock_cabinet",
@@ -782,9 +690,6 @@
       "desc": "走廊的长廊钟柜。默认只是观察；公主在队时可领取私房钱。",
       "x": 820,
       "y": 440,
-      "incomingTriggers": [
-        "trig_princess_in_party"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -807,9 +712,9 @@
                 "title": "公主在队伍中",
                 "checks": [
                   {
-                    "triggerId": "trig_princess_in_party",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
                   }
                 ],
                 "targetId": "choice_clock_money",
@@ -895,7 +800,10 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_princess_in_party"
+      ]
     },
     {
       "id": "evt_maid_black",
@@ -904,9 +812,6 @@
       "desc": "消耗金币强化攻击力：10G → +1；100G → +10。",
       "x": 40,
       "y": 560,
-      "incomingTriggers": [
-        "trig_gold"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -934,9 +839,9 @@
                 "style": "primary",
                 "checks": [
                   {
-                    "triggerId": "trig_gold",
                     "op": ">=",
-                    "value": 100
+                    "value": 100,
+                    "conditionId": "cond_gold"
                   }
                 ],
                 "targetId": "act_train_atk_10",
@@ -948,9 +853,9 @@
                 "style": "primary",
                 "checks": [
                   {
-                    "triggerId": "trig_gold",
                     "op": ">=",
-                    "value": 10
+                    "value": 10,
+                    "conditionId": "cond_gold"
                   }
                 ],
                 "targetId": "act_train_atk_1",
@@ -1007,7 +912,10 @@
             "defaultOptionIndex": 1
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_gold"
+      ]
     },
     {
       "id": "evt_maid_white",
@@ -1016,9 +924,6 @@
       "desc": "消耗金币强化防御力：每 10G 提升 1 点。",
       "x": 340,
       "y": 560,
-      "incomingTriggers": [
-        "trig_gold"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -1046,9 +951,9 @@
                 "style": "primary",
                 "checks": [
                   {
-                    "triggerId": "trig_gold",
                     "op": ">=",
-                    "value": 10
+                    "value": 10,
+                    "conditionId": "cond_gold"
                   }
                 ],
                 "targetId": "act_train_def_1",
@@ -1084,7 +989,10 @@
             "defaultOptionIndex": 0
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_gold"
+      ]
     },
     {
       "id": "evt_maid_green",
@@ -1093,10 +1001,6 @@
       "desc": "常规 10G → +20 生命上限；持有生命宝珠时翻倍为 +40。",
       "x": 640,
       "y": 560,
-      "incomingTriggers": [
-        "trig_gold",
-        "trig_has_hp_gem"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -1119,9 +1023,9 @@
                 "title": "持有生命宝珠 (效果翻倍)",
                 "checks": [
                   {
-                    "triggerId": "trig_has_hp_gem",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_has_hp_gem"
                   }
                 ],
                 "targetId": "choice_green_gem",
@@ -1148,9 +1052,9 @@
                 "style": "primary",
                 "checks": [
                   {
-                    "triggerId": "trig_gold",
                     "op": ">=",
-                    "value": 10
+                    "value": 10,
+                    "conditionId": "cond_gold"
                   }
                 ],
                 "targetId": "act_train_hp_gem",
@@ -1207,9 +1111,9 @@
                 "style": "primary",
                 "checks": [
                   {
-                    "triggerId": "trig_gold",
                     "op": ">=",
-                    "value": 10
+                    "value": 10,
+                    "conditionId": "cond_gold"
                   }
                 ],
                 "targetId": "act_train_hp_norm",
@@ -1250,7 +1154,11 @@
             "defaultOptionIndex": 0
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_gold",
+        "cond_has_hp_gem"
+      ]
     },
     {
       "id": "evt_board_castle",
@@ -1259,7 +1167,6 @@
       "desc": "王国骑士团战术手册，公布回合制伤害计算公式。",
       "x": 940,
       "y": 560,
-      "incomingTriggers": [],
       "actionGraph": {
         "nodes": [
           {
@@ -1288,7 +1195,8 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_region_beach",
@@ -1297,9 +1205,6 @@
       "desc": "走出王城大门后解锁的新区域：哥布林林地、阳光海滩、海滨码头与精灵村落。",
       "x": 1580,
       "y": 170,
-      "incomingTriggers": [
-        "trig_castle_exited"
-      ],
       "actionGraph": {
         "nodes": [
           {
@@ -1322,9 +1227,9 @@
                 "title": "已出城",
                 "checks": [
                   {
-                    "triggerId": "trig_castle_exited",
                     "op": "==",
-                    "value": true
+                    "value": true,
+                    "conditionId": "cond_castle_exited"
                   }
                 ],
                 "targetId": "act_beach_open",
@@ -1369,7 +1274,10 @@
             ]
           }
         ]
-      }
+      },
+      "incomingConditions": [
+        "cond_castle_exited"
+      ]
     }
   ],
   "presets": [
@@ -1425,6 +1333,98 @@
         "achievements.no_use_money": "failed",
         "regions.castle_exited": true
       }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cond_has_book",
+      "title": "🔍 condition: 持有冒险书",
+      "desc": "改变国王（日常指引 / 劝离公主）与离开城堡大门（门禁 1）的行为。",
+      "x": 460,
+      "y": 100,
+      "match": "all",
+      "conds": [
+        {
+          "var": "items.book",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_castle_tp",
+      "title": "🔍 condition: 传送点已激活",
+      "desc": "改变离开城堡大门（门禁 2）的行为。",
+      "x": 441,
+      "y": 223,
+      "match": "all",
+      "conds": [
+        {
+          "var": "teleports.castle",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_princess_in_party",
+      "title": "🔍 condition: 公主在队伍",
+      "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
+      "x": 443,
+      "y": 352,
+      "match": "all",
+      "conds": [
+        {
+          "var": "party.princess",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_castle_exited",
+      "title": "🔍 condition: 已离开城堡",
+      "desc": "改变下个区域（郊外与海滩）的行为：未出城时为远眺，出城后开放。",
+      "x": 1220,
+      "y": 170,
+      "match": "all",
+      "conds": [
+        {
+          "var": "regions.castle_exited",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_has_hp_gem",
+      "title": "🔍 condition: 持有生命宝珠",
+      "desc": "改变女仆·小绿的行为：生命强化效果翻倍。",
+      "x": 640,
+      "y": 690,
+      "match": "all",
+      "conds": [
+        {
+          "var": "items.hp_gem",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_gold",
+      "title": "🔍 condition: 金币",
+      "desc": "改变女仆小黑、小白、小绿的行为：金币满足时开放能力强化训练。",
+      "x": 340,
+      "y": 450,
+      "match": "all",
+      "conds": [
+        {
+          "var": "hero.gold",
+          "op": ">=",
+          "value": 10
+        }
+      ]
     }
   ]
 }

@@ -4,8 +4,8 @@ import {
   EventDef,
   ProjectData,
   AtomicStep,
-  TriggerCheck,
-  TriggerDef,
+  ConditionCheck,
+  ConditionDef,
   VarValue,
   WorldState,
   StartGraphNode
@@ -48,21 +48,24 @@ export function evalConds(p: ProjectData, state: WorldState, conds: CmpCond[] | 
   return (conds || []).every((c) => evalCond(p, state, c));
 }
 
-export function evalTrigger(p: ProjectData, state: WorldState, t: TriggerDef): boolean {
+export function evalCondition(p: ProjectData, state: WorldState, t: ConditionDef): boolean {
   if (t.conds.length === 0) return false;
   return t.match === 'any'
     ? t.conds.some((c) => evalCond(p, state, c))
     : t.conds.every((c) => evalCond(p, state, c));
 }
+export const evalTrigger = evalCondition;
 
-/** Action Tree 内部节点对 Trigger 的判断规则 */
-export function evalTriggerCheck(p: ProjectData, state: WorldState, check: TriggerCheck): boolean {
-  const trig = p.triggers.find((t) => t.id === check.triggerId);
-  if (!trig) return false;
+/** Action Tree 内部节点对所依赖 Condition 的判断规则 */
+export function evalConditionCheck(p: ProjectData, state: WorldState, check: ConditionCheck): boolean {
+  const condId = check.conditionId || check.triggerId;
+  const allConds = p.conditions || (p as any).triggers || [];
+  const cond = allConds.find((t: ConditionDef) => t.id === condId);
+  if (!cond) return false;
 
   // 自定义了比较符与比较值（如 金币 >= 100）
   if (check.op && check.value !== undefined) {
-    const primaryVar = trig.conds[0]?.var;
+    const primaryVar = cond.conds[0]?.var;
     if (primaryVar) {
       return compare(getValue(p, state, primaryVar), check.op, check.value);
     }
@@ -70,12 +73,13 @@ export function evalTriggerCheck(p: ProjectData, state: WorldState, check: Trigg
 
   // 指定了布尔判断（如 == true 或 == false）
   if (check.value !== undefined && typeof check.value === 'boolean') {
-    return evalTrigger(p, state, trig) === check.value;
+    return evalCondition(p, state, cond) === check.value;
   }
 
-  // 默认直接执行 Trigger 主规则求值
-  return evalTrigger(p, state, trig);
+  // 默认直接执行 Condition 主规则求值
+  return evalCondition(p, state, cond);
 }
+export const evalTriggerCheck = evalConditionCheck;
 
 /** 评估事件当前预计执行的逻辑状态 (用于大图状态 Pill 展示) */
 export function getEventStatus(

@@ -132,83 +132,6 @@
       "desc": "走出大门，解锁【郊外与海滩】"
     }
   ],
-  "triggers": [
-    {
-      "id": "trig_has_book",
-      "title": "⚡ trigger: 持有冒险书",
-      "desc": "改变国王（日常指引 / 劝离公主）与离开城堡大门（门禁 1）的行为。",
-      "x": 460,
-      "y": 100,
-      "match": "all",
-      "conds": [
-        {
-          "var": "items.book",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_castle_tp",
-      "title": "⚡ trigger: 传送点已激活",
-      "desc": "改变离开城堡大门（门禁 2）的行为。",
-      "x": 441,
-      "y": 223,
-      "match": "all",
-      "conds": [
-        {
-          "var": "teleports.castle",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_princess_in_party",
-      "title": "⚡ trigger: 公主在队伍",
-      "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
-      "x": 443,
-      "y": 352,
-      "match": "all",
-      "conds": [
-        {
-          "var": "party.princess",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_castle_exited",
-      "title": "⚡ trigger: 已离开城堡",
-      "desc": "改变下个区域（郊外与海滩）的行为：未出城时为远眺，出城后开放。",
-      "x": 1220,
-      "y": 170,
-      "match": "all",
-      "conds": [
-        {
-          "var": "regions.castle_exited",
-          "op": "==",
-          "value": true
-        }
-      ]
-    },
-    {
-      "id": "trig_has_hp_gem",
-      "title": "⚡ trigger: 持有生命宝珠",
-      "desc": "改变女仆·小绿的行为：生命强化效果翻倍。",
-      "x": 640,
-      "y": 690,
-      "match": "all",
-      "conds": [
-        {
-          "var": "items.hp_gem",
-          "op": "==",
-          "value": true
-        }
-      ]
-    }
-  ],
   "events": [
     {
       "id": "evt_king",
@@ -217,105 +140,173 @@
       "desc": "王城最高统治者。初见赐予冒险书与地图；之后给出日常指引；公主在队时可劝说公主离队。",
       "x": 60,
       "y": 100,
-      "branches": [
-        {
-          "id": "b_king_persuade",
-          "title": "劝说公主离队",
-          "when": [
-            "trig_has_book",
-            "trig_princess_in_party"
-          ],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "国王",
-              "speakerTitle": "王城统治者",
-              "avatar": "👑",
-              "text": "公主有没有给你添麻烦？需要我来劝说她离队么？",
-              "options": [
-                {
-                  "text": "好的 (劝说离队)",
-                  "style": "danger",
-                  "steps": [
-                    {
-                      "type": "set",
-                      "var": "party.princess",
-                      "value": false
-                    },
-                    {
-                      "type": "say",
-                      "speaker": "紫水晶公主",
-                      "speakerTitle": "王城公主 (离队)",
-                      "avatar": "👸",
-                      "text": "对不起勇者大人，我会在这里为你祈祷的。\n我不在的话还请记得适量[color=#00e676]提升防御[/color]来避免不必要的伤害啊~",
-                      "button": "保重"
-                    }
-                  ]
-                },
-                {
-                  "text": "算了 (继续同行)",
-                  "style": "secondary",
-                  "steps": [
-                    {
-                      "type": "say",
-                      "speaker": "国王",
-                      "speakerTitle": "王城统治者",
-                      "avatar": "👑",
-                      "text": "那就好，愿神佑你们一切顺利！",
-                      "button": "谢陛下"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "b_king_guide",
-          "title": "日常指引",
-          "when": [
-            "trig_has_book"
-          ],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "国王",
-              "speakerTitle": "王城统治者",
-              "avatar": "👑",
-              "text": "海滩对面的[color=#cc0000]精灵村[/color]，可以快速训练能力。还请在清理完城堡周边后优先拜访！",
-              "button": "谨遵陛下嘱托"
-            }
-          ]
-        },
-        {
-          "id": "b_king_first",
-          "title": "初见赐物",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "国王",
-              "speakerTitle": "王城统治者",
-              "avatar": "👑",
-              "text": "请带上这本[color=#cc0000]冒险书[/color]和[color=#cc0000]地图[/color]吧，激活地图上标注的[color=#cc0000]女神像[/color]就可以传送了。请去城堡里的女神像试一试！",
-              "button": "收下宝物"
-            },
-            {
-              "type": "set",
-              "var": "items.book",
-              "value": true
-            },
-            {
-              "type": "set",
-              "var": "items.map",
-              "value": true
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_has_book",
-        "trig_princess_in_party"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_king",
+            "type": "start",
+            "x": 40,
+            "y": 318,
+            "nextId": "sel_king",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_king",
+            "type": "selector",
+            "title": "🔀 国王阶段判断",
+            "x": 240,
+            "y": 262,
+            "cases": [
+              {
+                "id": "case_persuade",
+                "title": "持有冒险书 且 公主在队",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_has_book"
+                  },
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
+                  }
+                ],
+                "targetId": "choice_king_princess",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "case_guide",
+                "title": "持有冒险书",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_has_book"
+                  }
+                ],
+                "targetId": "act_king_guide",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "act_king_first",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_king_princess",
+            "type": "choice",
+            "title": "💬 劝离公主提问",
+            "x": 560,
+            "y": 98,
+            "speaker": "国王",
+            "speakerTitle": "王城统治者",
+            "avatar": "👑",
+            "text": "公主有没有给你添麻烦？需要我来劝说她离队么？",
+            "options": [
+              {
+                "id": "opt_persuade_yes",
+                "text": "好的 (劝说离队)",
+                "style": "danger",
+                "targetId": "act_princess_leave",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_persuade_no",
+                "text": "算了 (继续同行)",
+                "style": "secondary",
+                "targetId": "act_princess_stay",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_princess_leave",
+            "type": "action",
+            "title": "🎬 公主离队",
+            "x": 890,
+            "y": 60,
+            "steps": [
+              {
+                "type": "set",
+                "var": "party.princess",
+                "value": false
+              },
+              {
+                "type": "say",
+                "speaker": "紫水晶公主",
+                "speakerTitle": "王城公主 (离队)",
+                "avatar": "👸",
+                "text": "对不起勇者大人，我会在这里为你祈祷的。\n我不在的话还请记得适量[color=#00e676]提升防御[/color]来避免不必要的伤害啊~",
+                "button": "保重"
+              }
+            ]
+          },
+          {
+            "id": "act_princess_stay",
+            "type": "action",
+            "title": "🎬 继续同行",
+            "x": 890,
+            "y": 221,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "国王",
+                "speakerTitle": "王城统治者",
+                "avatar": "👑",
+                "text": "那就好，愿神佑你们一切顺利！",
+                "button": "谢陛下"
+              }
+            ]
+          },
+          {
+            "id": "act_king_guide",
+            "type": "action",
+            "title": "🎬 日常指引",
+            "x": 560,
+            "y": 316,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "国王",
+                "speakerTitle": "王城统治者",
+                "avatar": "👑",
+                "text": "海滩对面的[color=#cc0000]精灵村[/color]，可以快速训练能力。还请在清理完城堡周边后优先拜访！",
+                "button": "谨遵陛下嘱托"
+              }
+            ]
+          },
+          {
+            "id": "act_king_first",
+            "type": "action",
+            "title": "🎬 初见赐物",
+            "x": 560,
+            "y": 448,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "国王",
+                "speakerTitle": "王城统治者",
+                "avatar": "👑",
+                "text": "请带上这本[color=#cc0000]冒险书[/color]和[color=#cc0000]地图[/color]吧，激活地图上标注的[color=#cc0000]女神像[/color]就可以传送了。请去城堡里的女神像试一试！",
+                "button": "收下宝物"
+              },
+              {
+                "type": "set",
+                "var": "items.book",
+                "value": true
+              },
+              {
+                "type": "set",
+                "var": "items.map",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_has_book",
+        "cond_princess_in_party"
       ]
     },
     {
@@ -325,29 +316,41 @@
       "desc": "王城内的远古女神雕像。初次祈祷激活王城传送点。",
       "x": 60,
       "y": 240,
-      "incomingTriggers": [],
-      "branches": [
-        {
-          "id": "b_statue_activate",
-          "title": "激活传送点",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "女神像",
-              "speakerTitle": "远古神迹",
-              "avatar": "🗽",
-              "text": "[color=#00e676]城堡[/color] 传送点已激活！可以在地图上传送了。\n\n[color=#ff9100]小提示[/color]：\n1. 可以随时在设置中保存/读取游戏哦\n2. 拖拽屏幕可以查看地图哦",
-              "button": "虔诚祈祷"
-            },
-            {
-              "type": "set",
-              "var": "teleports.castle",
-              "value": true
-            }
-          ]
-        }
-      ]
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_statue",
+            "type": "start",
+            "x": 40,
+            "y": 90,
+            "nextId": "act_statue_activate",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "act_statue_activate",
+            "type": "action",
+            "title": "🎬 激活传送点",
+            "x": 240,
+            "y": 60,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "女神像",
+                "speakerTitle": "远古神迹",
+                "avatar": "🗽",
+                "text": "[color=#00e676]城堡[/color] 传送点已激活！可以在地图上传送了。\n\n[color=#ff9100]小提示[/color]：\n1. 可以随时在设置中保存/读取游戏哦\n2. 拖拽屏幕可以查看地图哦",
+                "button": "虔诚祈祷"
+              },
+              {
+                "type": "set",
+                "var": "teleports.castle",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_exit_castle",
@@ -356,66 +359,119 @@
       "desc": "城堡出口门禁。需同时持有冒险书并激活传送点，否则公主会在门前提醒。",
       "x": 820,
       "y": 170,
-      "branches": [
-        {
-          "id": "b_exit_pass",
-          "title": "出城通行",
-          "when": [
-            "trig_has_book",
-            "trig_castle_tp"
-          ],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "系统播报",
-              "speakerTitle": "区域突破",
-              "avatar": "🎉",
-              "text": "[color=#00e676]大门轰然开启！[/color]\n你佩戴着冒险书与地图，脚踏传送光阵走出城堡。\n\n已解锁【🏖️ 下一区域：郊外与海滩】！",
-              "button": "奔向郊外与海滩"
-            },
-            {
-              "type": "set",
-              "var": "regions.castle_exited",
-              "value": true
-            }
-          ]
-        },
-        {
-          "id": "b_exit_need_tp",
-          "title": "提醒激活女神像",
-          "when": [
-            "trig_has_book"
-          ],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "王城公主 (拦截指引)",
-              "avatar": "👸",
-              "text": "勇者大人，去激活一下[color=#ff9100]城堡里的女神像[/color]吧，这样就可以[color=#00e676]随时传送回来[/color]了~",
-              "button": "去激活女神像"
-            }
-          ]
-        },
-        {
-          "id": "b_exit_need_book",
-          "title": "提醒觐见国王",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "王城公主 (拦截指引)",
-              "avatar": "👸",
-              "text": "勇者大人，[color=#ff5252]陛下还在等着您[/color]呢~ 还没有带上冒险书可不能冒然出城哦！",
-              "button": "折回王座"
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_has_book",
-        "trig_castle_tp"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_exit",
+            "type": "start",
+            "x": 40,
+            "y": 224,
+            "nextId": "sel_exit",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_exit",
+            "type": "selector",
+            "title": "🔀 出城门禁检查",
+            "x": 240,
+            "y": 167,
+            "cases": [
+              {
+                "id": "case_pass",
+                "title": "书与传送点齐全",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_has_book"
+                  },
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_castle_tp"
+                  }
+                ],
+                "targetId": "act_exit_pass",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "case_need_tp",
+                "title": "持有冒险书 (缺传送点)",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_has_book"
+                  }
+                ],
+                "targetId": "act_exit_need_tp",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "act_exit_need_book",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "act_exit_pass",
+            "type": "action",
+            "title": "🎬 出城通行",
+            "x": 560,
+            "y": 60,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "系统播报",
+                "speakerTitle": "区域突破",
+                "avatar": "🎉",
+                "text": "[color=#00e676]大门轰然开启！[/color]\n你佩戴着冒险书与地图，脚踏传送光阵走出城堡。\n\n已解锁【🏖️ 下一区域：郊外与海滩】！",
+                "button": "奔向郊外与海滩"
+              },
+              {
+                "type": "set",
+                "var": "regions.castle_exited",
+                "value": true
+              }
+            ]
+          },
+          {
+            "id": "act_exit_need_tp",
+            "type": "action",
+            "title": "🎬 提醒激活女神像",
+            "x": 560,
+            "y": 221,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "紫水晶公主",
+                "speakerTitle": "王城公主 (拦截指引)",
+                "avatar": "👸",
+                "text": "勇者大人，去激活一下[color=#ff9100]城堡里的女神像[/color]吧，这样就可以[color=#00e676]随时传送回来[/color]了~",
+                "button": "去激活女神像"
+              }
+            ]
+          },
+          {
+            "id": "act_exit_need_book",
+            "type": "action",
+            "title": "🎬 提醒觐见国王",
+            "x": 560,
+            "y": 354,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "紫水晶公主",
+                "speakerTitle": "王城公主 (拦截指引)",
+                "avatar": "👸",
+                "text": "勇者大人，[color=#ff5252]陛下还在等着您[/color]呢~ 还没有带上冒险书可不能冒然出城哦！",
+                "button": "折回王座"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_has_book",
+        "cond_castle_tp"
       ]
     },
     {
@@ -425,63 +481,90 @@
       "desc": "城内闲逛的紫水晶公主。可邀请入队（熔断噩梦成就）。",
       "x": 60,
       "y": 380,
-      "branches": [
-        {
-          "id": "b_princess_invite",
-          "title": "邀请入队",
-          "when": [],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "王城公主",
-              "avatar": "👸",
-              "text": "可以带我一起去旅行么？\n([color=#ff5252]注：公主可以战斗后回血，全程不带公主是噩梦难度，第一次游戏推荐带公主[/color])",
-              "options": [
-                {
-                  "text": "好的 (邀请入队)",
-                  "style": "primary",
-                  "steps": [
-                    {
-                      "type": "set",
-                      "var": "party.princess",
-                      "value": true
-                    },
-                    {
-                      "type": "set",
-                      "var": "achievements.no_use_princess",
-                      "value": "failed"
-                    },
-                    {
-                      "type": "say",
-                      "speaker": "紫水晶公主",
-                      "speakerTitle": "队伍同伴",
-                      "avatar": "👸",
-                      "text": "谢谢，我会努力协助勇者大人的！(此后您可以使用我的床休息，也可以领取私房钱了哦~)",
-                      "button": "出发！"
-                    }
-                  ]
-                },
-                {
-                  "text": "算了 (独自踏上旅程)",
-                  "style": "secondary",
-                  "steps": [
-                    {
-                      "type": "say",
-                      "speaker": "紫水晶公主",
-                      "speakerTitle": "王城公主",
-                      "avatar": "👸",
-                      "text": "好吧，如果改变了主意随时回来找我啊！我会一直在这里等您回心转意的。",
-                      "button": "好的"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": []
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_princess_join",
+            "type": "start",
+            "x": 40,
+            "y": 171,
+            "nextId": "choice_princess_join",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_princess_join",
+            "type": "choice",
+            "title": "💬 邀请入队询问",
+            "x": 240,
+            "y": 112,
+            "speaker": "紫水晶公主",
+            "speakerTitle": "王城公主",
+            "avatar": "👸",
+            "text": "可以带我一起去旅行么？\n([color=#ff5252]注：公主可以战斗后回血，全程不带公主是噩梦难度，第一次游戏推荐带公主[/color])",
+            "options": [
+              {
+                "id": "opt_join_yes",
+                "text": "好的 (邀请入队)",
+                "style": "primary",
+                "targetId": "act_princess_join_yes",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_join_no",
+                "text": "算了 (独自踏上旅程)",
+                "style": "secondary",
+                "targetId": "act_princess_join_no",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_princess_join_yes",
+            "type": "action",
+            "title": "🎬 公主入队 (熔断噩梦)",
+            "x": 570,
+            "y": 60,
+            "steps": [
+              {
+                "type": "set",
+                "var": "party.princess",
+                "value": true
+              },
+              {
+                "type": "set",
+                "var": "achievements.no_use_princess",
+                "value": "failed"
+              },
+              {
+                "type": "say",
+                "speaker": "紫水晶公主",
+                "speakerTitle": "队伍同伴",
+                "avatar": "👸",
+                "text": "谢谢，我会努力协助勇者大人的！(此后您可以使用我的床休息，也可以领取私房钱了哦~)",
+                "button": "出发！"
+              }
+            ]
+          },
+          {
+            "id": "act_princess_join_no",
+            "type": "action",
+            "title": "🎬 暂未入队",
+            "x": 570,
+            "y": 249,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "紫水晶公主",
+                "speakerTitle": "王城公主",
+                "avatar": "👸",
+                "text": "好吧，如果改变了主意随时回来找我啊！我会一直在这里等您回心转意的。",
+                "button": "好的"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_princess_bed",
@@ -490,72 +573,114 @@
       "desc": "公主寝宫里的床铺。默认只是观察；公主在队时可就寝回满 HP。",
       "x": 820,
       "y": 320,
-      "branches": [
-        {
-          "id": "b_bed_rest",
-          "title": "就寝休息",
-          "when": [
-            "trig_princess_in_party"
-          ],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "队伍同伴",
-              "avatar": "👸",
-              "text": "勇者大人，需要的话请在床上休息一会儿吧！\n([color=#ff9100]注：床可以无限使用回满HP，但通关时会获得普通难度评价[/color])",
-              "options": [
-                {
-                  "text": "好的 (就寝休息)",
-                  "style": "primary",
-                  "steps": [
-                    {
-                      "type": "set",
-                      "var": "hero.hp",
-                      "from": "hero.maxHp"
-                    },
-                    {
-                      "type": "set",
-                      "var": "achievements.no_use_bed",
-                      "value": "failed"
-                    },
-                    {
-                      "type": "say",
-                      "speaker": "系统提示",
-                      "speakerTitle": "体力恢复",
-                      "avatar": "💖",
-                      "text": "精神焕发！勇者的生命值已完全恢复为 [color=#00e676]{hero.hp}/{hero.maxHp}[/color]！",
-                      "button": "神清气爽"
-                    }
-                  ]
-                },
-                {
-                  "text": "算了 (稍后再休息)",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "b_bed_look",
-          "title": "默认观察",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "环境观察",
-              "speakerTitle": "城堡寝宫",
-              "avatar": "🛏️",
-              "text": "一张看起来非常整洁的床。床单铺得一丝不苟，似乎属于公主殿下。",
-              "button": "离开"
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_princess_in_party"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_bed",
+            "type": "start",
+            "x": 40,
+            "y": 185,
+            "nextId": "sel_bed",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_bed",
+            "type": "selector",
+            "title": "🔀 寝宫就寝判断",
+            "x": 240,
+            "y": 146,
+            "cases": [
+              {
+                "id": "case_princess_in",
+                "title": "公主在队伍中",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
+                  }
+                ],
+                "targetId": "choice_bed_rest",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "act_bed_look",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_bed_rest",
+            "type": "choice",
+            "title": "💬 就寝询问",
+            "x": 560,
+            "y": 60,
+            "speaker": "紫水晶公主",
+            "speakerTitle": "队伍同伴",
+            "avatar": "👸",
+            "text": "勇者大人，需要的话请在床上休息一会儿吧！\n([color=#ff9100]注：床可以无限使用回满HP，但通关时会获得普通难度评价[/color])",
+            "options": [
+              {
+                "id": "opt_bed_yes",
+                "text": "好的 (就寝休息)",
+                "style": "primary",
+                "targetId": "act_bed_rest",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_bed_no",
+                "text": "算了 (稍后再休息)",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_bed_rest",
+            "type": "action",
+            "title": "🎬 回满生命",
+            "x": 890,
+            "y": 74,
+            "steps": [
+              {
+                "type": "set",
+                "var": "hero.hp",
+                "from": "hero.maxHp"
+              },
+              {
+                "type": "set",
+                "var": "achievements.no_use_bed",
+                "value": "failed"
+              },
+              {
+                "type": "say",
+                "speaker": "系统提示",
+                "speakerTitle": "体力恢复",
+                "avatar": "💖",
+                "text": "精神焕发！勇者的生命值已完全恢复为 [color=#00e676]{hero.hp}/{hero.maxHp}[/color]！",
+                "button": "神清气爽"
+              }
+            ]
+          },
+          {
+            "id": "act_bed_look",
+            "type": "action",
+            "title": "🎬 默认观察",
+            "x": 560,
+            "y": 277,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "环境观察",
+                "speakerTitle": "城堡寝宫",
+                "avatar": "🛏️",
+                "text": "一张看起来非常整洁的床。床单铺得一丝不苟，似乎属于公主殿下。",
+                "button": "离开"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_princess_in_party"
       ]
     },
     {
@@ -565,77 +690,119 @@
       "desc": "走廊的长廊钟柜。默认只是观察；公主在队时可领取私房钱。",
       "x": 820,
       "y": 440,
-      "branches": [
-        {
-          "id": "b_clock_money",
-          "title": "领取私房钱",
-          "when": [
-            "trig_princess_in_party"
-          ],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "紫水晶公主",
-              "speakerTitle": "队伍同伴",
-              "avatar": "👸",
-              "text": "勇者大人，这里有我的一些私房钱，请拿去使用吧。\n([color=#ff9100]注：私房钱可以无限领取，但通关时会获得简单难度评价[/color])",
-              "options": [
-                {
-                  "text": "收下私房钱 (+100G)",
-                  "style": "primary",
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": 100
-                    },
-                    {
-                      "type": "set",
-                      "var": "achievements.no_use_money",
-                      "value": "failed"
-                    },
-                    {
-                      "type": "set",
-                      "var": "achievements.no_use_bed",
-                      "value": "failed"
-                    },
-                    {
-                      "type": "say",
-                      "speaker": "系统提示",
-                      "speakerTitle": "资金入账",
-                      "avatar": "💰",
-                      "text": "收下了沉甸甸的钱包！当前金币变为 [color=#ffd700]{hero.gold} Gold[/color]！",
-                      "button": "多谢公主"
-                    }
-                  ]
-                },
-                {
-                  "text": "算了 (留给公主)",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "b_clock_look",
-          "title": "默认观察",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "环境观察",
-              "speakerTitle": "城堡长廊",
-              "avatar": "🕰️",
-              "text": "大钟发出着哒，哒的声音。下面还有个精致的小盒子，似乎是属于公主的。",
-              "button": "合上盒子"
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_princess_in_party"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_clock",
+            "type": "start",
+            "x": 40,
+            "y": 185,
+            "nextId": "sel_clock",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_clock",
+            "type": "selector",
+            "title": "🔀 私房钱判断",
+            "x": 240,
+            "y": 146,
+            "cases": [
+              {
+                "id": "case_clock_princess",
+                "title": "公主在队伍中",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_princess_in_party"
+                  }
+                ],
+                "targetId": "choice_clock_money",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "act_clock_look",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_clock_money",
+            "type": "choice",
+            "title": "💬 领取私房钱询问",
+            "x": 560,
+            "y": 60,
+            "speaker": "紫水晶公主",
+            "speakerTitle": "队伍同伴",
+            "avatar": "👸",
+            "text": "勇者大人，这里有我的一些私房钱，请拿去使用吧。\n([color=#ff9100]注：私房钱可以无限领取，但通关时会获得简单难度评价[/color])",
+            "options": [
+              {
+                "id": "opt_clock_yes",
+                "text": "收下私房钱 (+100G)",
+                "style": "primary",
+                "targetId": "act_clock_money",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_clock_no",
+                "text": "算了 (留给公主)",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_clock_money",
+            "type": "action",
+            "title": "🎬 领取 100G",
+            "x": 890,
+            "y": 60,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": 100
+              },
+              {
+                "type": "set",
+                "var": "achievements.no_use_money",
+                "value": "failed"
+              },
+              {
+                "type": "set",
+                "var": "achievements.no_use_bed",
+                "value": "failed"
+              },
+              {
+                "type": "say",
+                "speaker": "系统提示",
+                "speakerTitle": "资金入账",
+                "avatar": "💰",
+                "text": "收下了沉甸甸的钱包！当前金币变为 [color=#ffd700]{hero.gold} Gold[/color]！",
+                "button": "多谢公主"
+              }
+            ]
+          },
+          {
+            "id": "act_clock_look",
+            "type": "action",
+            "title": "🎬 默认观察",
+            "x": 560,
+            "y": 277,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "环境观察",
+                "speakerTitle": "城堡长廊",
+                "avatar": "🕰️",
+                "text": "大钟发出着哒，哒的声音。下面还有个精致的小盒子，似乎是属于公主的。",
+                "button": "合上盒子"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_princess_in_party"
       ]
     },
     {
@@ -645,76 +812,110 @@
       "desc": "消耗金币强化攻击力：10G → +1；100G → +10。",
       "x": 40,
       "y": 560,
-      "branches": [
-        {
-          "id": "b_maid_black_train",
-          "title": "训练攻击",
-          "when": [],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "女仆·小黑",
-              "speakerTitle": "武艺侍从",
-              "avatar": "⚔️",
-              "text": "勇者大人，需要训练一下攻击能力么？\n当前攻击力：[color=#ff5252]{hero.attack}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
-              "options": [
-                {
-                  "text": "训练 10 次 (-100G, +10攻)",
-                  "style": "primary",
-                  "require": [
-                    {
-                      "var": "hero.gold",
-                      "op": ">=",
-                      "value": 100
-                    }
-                  ],
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": -100
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.attack",
-                      "amount": 10
-                    }
-                  ]
-                },
-                {
-                  "text": "训练 1 次 (-10G, +1攻)",
-                  "style": "primary",
-                  "require": [
-                    {
-                      "var": "hero.gold",
-                      "op": ">=",
-                      "value": 10
-                    }
-                  ],
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": -10
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.attack",
-                      "amount": 1
-                    }
-                  ]
-                },
-                {
-                  "text": "稍后再来",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": []
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_maid_black",
+            "type": "start",
+            "x": 40,
+            "y": 171,
+            "nextId": "choice_train_atk",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_train_atk",
+            "type": "choice",
+            "title": "💬 女仆·小黑 (攻击训练)",
+            "x": 240,
+            "y": 94,
+            "speaker": "女仆·小黑",
+            "speakerTitle": "武艺侍从",
+            "avatar": "⚔️",
+            "text": "勇者大人，需要训练一下攻击能力么？\n当前攻击力：[color=#ff5252]{hero.attack}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
+            "options": [
+              {
+                "id": "opt_atk_10",
+                "text": "训练 10 次 (-100G, +10攻)",
+                "style": "primary",
+                "checks": [
+                  {
+                    "op": ">=",
+                    "value": 100,
+                    "conditionId": "cond_gold"
+                  }
+                ],
+                "targetId": "act_train_atk_10",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_atk_1",
+                "text": "训练 1 次 (-10G, +1攻)",
+                "style": "primary",
+                "checks": [
+                  {
+                    "op": ">=",
+                    "value": 10,
+                    "conditionId": "cond_gold"
+                  }
+                ],
+                "targetId": "act_train_atk_1",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_atk_cancel",
+                "text": "稍后再来",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_train_atk_10",
+            "type": "action",
+            "title": "🎬 强化十次攻击",
+            "x": 570,
+            "y": 60,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": -100
+              },
+              {
+                "type": "add",
+                "var": "hero.attack",
+                "amount": 10
+              }
+            ],
+            "nextId": "choice_train_atk",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "act_train_atk_1",
+            "type": "action",
+            "title": "🎬 强化一次攻击",
+            "x": 570,
+            "y": 221,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": -10
+              },
+              {
+                "type": "add",
+                "var": "hero.attack",
+                "amount": 1
+              }
+            ],
+            "nextId": "choice_train_atk",
+            "defaultOptionIndex": 1
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_gold"
+      ]
     },
     {
       "id": "evt_maid_white",
@@ -723,53 +924,75 @@
       "desc": "消耗金币强化防御力：每 10G 提升 1 点。",
       "x": 340,
       "y": 560,
-      "branches": [
-        {
-          "id": "b_maid_white_train",
-          "title": "训练防御",
-          "when": [],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "女仆·小白",
-              "speakerTitle": "护盾侍从",
-              "avatar": "🛡️",
-              "text": "勇者大人，需要训练一下防御能力么？每消耗 10 金币可以提升 1 点防御力。\n当前防御力：[color=#40c4ff]{hero.defence}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
-              "options": [
-                {
-                  "text": "训练 1 次 (-10G, +1防)",
-                  "style": "primary",
-                  "require": [
-                    {
-                      "var": "hero.gold",
-                      "op": ">=",
-                      "value": 10
-                    }
-                  ],
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": -10
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.defence",
-                      "amount": 1
-                    }
-                  ]
-                },
-                {
-                  "text": "稍后再来",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": []
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_maid_white",
+            "type": "start",
+            "x": 40,
+            "y": 118,
+            "nextId": "choice_train_def",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_train_def",
+            "type": "choice",
+            "title": "💬 女仆·小白 (防御训练)",
+            "x": 240,
+            "y": 60,
+            "speaker": "女仆·小白",
+            "speakerTitle": "护盾侍从",
+            "avatar": "🛡️",
+            "text": "勇者大人，需要训练一下防御能力么？每消耗 10 金币可以提升 1 点防御力。\n当前防御力：[color=#40c4ff]{hero.defence}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
+            "options": [
+              {
+                "id": "opt_def_1",
+                "text": "训练 1 次 (-10G, +1防)",
+                "style": "primary",
+                "checks": [
+                  {
+                    "op": ">=",
+                    "value": 10,
+                    "conditionId": "cond_gold"
+                  }
+                ],
+                "targetId": "act_train_def_1",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_def_cancel",
+                "text": "稍后再来",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_train_def_1",
+            "type": "action",
+            "title": "🎬 强化一次防御",
+            "x": 570,
+            "y": 88,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": -10
+              },
+              {
+                "type": "add",
+                "var": "hero.defence",
+                "amount": 1
+              }
+            ],
+            "nextId": "choice_train_def",
+            "defaultOptionIndex": 0
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_gold"
+      ]
     },
     {
       "id": "evt_maid_green",
@@ -778,110 +1001,163 @@
       "desc": "常规 10G → +20 生命上限；持有生命宝珠时翻倍为 +40。",
       "x": 640,
       "y": 560,
-      "branches": [
-        {
-          "id": "b_maid_green_gem",
-          "title": "宝珠强化",
-          "when": [
-            "trig_has_hp_gem"
-          ],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "女仆·小绿",
-              "speakerTitle": "生命侍从",
-              "avatar": "❤️",
-              "text": "哇！勇者大人身上带着[color=#00e676]生命宝珠[/color]呢！\n有宝珠加护，现在每消耗 [color=#ffd700]10 金币[/color] 就可以提升 [color=#ff5252]40 点生命上限[/color]啦！\n\n当前生命：[color=#ff5252]{hero.hp}/{hero.maxHp}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
-              "options": [
-                {
-                  "text": "强化生命 (-10G, +40 MaxHP)",
-                  "style": "primary",
-                  "require": [
-                    {
-                      "var": "hero.gold",
-                      "op": ">=",
-                      "value": 10
-                    }
-                  ],
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": -10
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.maxHp",
-                      "amount": 40
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.hp",
-                      "amount": 40
-                    }
-                  ]
-                },
-                {
-                  "text": "稍后再来",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "b_maid_green_normal",
-          "title": "常规强化",
-          "when": [],
-          "steps": [
-            {
-              "type": "choice",
-              "speaker": "女仆·小绿",
-              "speakerTitle": "生命侍从",
-              "avatar": "❤️",
-              "text": "勇者大人，需要提升生命上限么？\n每消耗 [color=#ffd700]10 金币[/color] 就可以提升 [color=#ff5252]20 点生命上限[/color]哦~ (若找到传说中的生命宝珠效果会翻倍呢)\n\n当前生命：[color=#ff5252]{hero.hp}/{hero.maxHp}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
-              "options": [
-                {
-                  "text": "强化生命 (-10G, +20 MaxHP)",
-                  "style": "primary",
-                  "require": [
-                    {
-                      "var": "hero.gold",
-                      "op": ">=",
-                      "value": 10
-                    }
-                  ],
-                  "steps": [
-                    {
-                      "type": "add",
-                      "var": "hero.gold",
-                      "amount": -10
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.maxHp",
-                      "amount": 20
-                    },
-                    {
-                      "type": "add",
-                      "var": "hero.hp",
-                      "amount": 20
-                    }
-                  ]
-                },
-                {
-                  "text": "稍后再来",
-                  "style": "secondary",
-                  "steps": []
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_has_hp_gem"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_maid_green",
+            "type": "start",
+            "x": 40,
+            "y": 227,
+            "nextId": "sel_maid_green",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_maid_green",
+            "type": "selector",
+            "title": "🔀 宝珠加护判断",
+            "x": 240,
+            "y": 188,
+            "cases": [
+              {
+                "id": "case_has_gem",
+                "title": "持有生命宝珠 (效果翻倍)",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_has_hp_gem"
+                  }
+                ],
+                "targetId": "choice_green_gem",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "choice_green_normal",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_green_gem",
+            "type": "choice",
+            "title": "💬 宝珠加护强化",
+            "x": 560,
+            "y": 60,
+            "speaker": "女仆·小绿",
+            "speakerTitle": "生命侍从",
+            "avatar": "❤️",
+            "text": "哇！勇者大人身上带着[color=#00e676]生命宝珠[/color]呢！\n有宝珠加护，现在每消耗 [color=#ffd700]10 金币[/color] 就可以提升 [color=#ff5252]40 点生命上限[/color]啦！\n\n当前生命：[color=#ff5252]{hero.hp}/{hero.maxHp}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
+            "options": [
+              {
+                "id": "opt_green_gem_1",
+                "text": "强化生命 (-10G, +40 MaxHP)",
+                "style": "primary",
+                "checks": [
+                  {
+                    "op": ">=",
+                    "value": 10,
+                    "conditionId": "cond_gold"
+                  }
+                ],
+                "targetId": "act_train_hp_gem",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_green_gem_cancel",
+                "text": "稍后再来",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_train_hp_gem",
+            "type": "action",
+            "title": "🎬 强化生命 (+40HP)",
+            "x": 890,
+            "y": 74,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": -10
+              },
+              {
+                "type": "add",
+                "var": "hero.maxHp",
+                "amount": 40
+              },
+              {
+                "type": "add",
+                "var": "hero.hp",
+                "amount": 40
+              }
+            ],
+            "nextId": "choice_green_gem",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "choice_green_normal",
+            "type": "choice",
+            "title": "💬 常规生命强化",
+            "x": 560,
+            "y": 277,
+            "speaker": "女仆·小绿",
+            "speakerTitle": "生命侍从",
+            "avatar": "❤️",
+            "text": "勇者大人，需要提升生命上限么？\n每消耗 [color=#ffd700]10 金币[/color] 就可以提升 [color=#ff5252]20 点生命上限[/color]哦~ (若找到传说中的生命宝珠效果会翻倍呢)\n\n当前生命：[color=#ff5252]{hero.hp}/{hero.maxHp}[/color]，当前金币：[color=#ffd700]{hero.gold} G[/color]",
+            "options": [
+              {
+                "id": "opt_green_norm_1",
+                "text": "强化生命 (-10G, +20 MaxHP)",
+                "style": "primary",
+                "checks": [
+                  {
+                    "op": ">=",
+                    "value": 10,
+                    "conditionId": "cond_gold"
+                  }
+                ],
+                "targetId": "act_train_hp_norm",
+                "defaultOptionIndex": 0
+              },
+              {
+                "id": "opt_green_norm_cancel",
+                "text": "稍后再来",
+                "style": "secondary",
+                "defaultOptionIndex": 0
+              }
+            ]
+          },
+          {
+            "id": "act_train_hp_norm",
+            "type": "action",
+            "title": "🎬 强化生命 (+20HP)",
+            "x": 890,
+            "y": 291,
+            "steps": [
+              {
+                "type": "add",
+                "var": "hero.gold",
+                "amount": -10
+              },
+              {
+                "type": "add",
+                "var": "hero.maxHp",
+                "amount": 20
+              },
+              {
+                "type": "add",
+                "var": "hero.hp",
+                "amount": 20
+              }
+            ],
+            "nextId": "choice_green_normal",
+            "defaultOptionIndex": 0
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_gold",
+        "cond_has_hp_gem"
       ]
     },
     {
@@ -891,24 +1167,36 @@
       "desc": "王国骑士团战术手册，公布回合制伤害计算公式。",
       "x": 940,
       "y": 560,
-      "branches": [
-        {
-          "id": "b_board_read",
-          "title": "阅读告示",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "王城战斗告示牌",
-              "speakerTitle": "王国骑士团战术手册",
-              "avatar": "🪧",
-              "text": "[color=#ffd700]【紫水晶骑士物语 · 经典回合制换血公式】[/color]\n\n1. [color=#ff5252]单回合真实伤害[/color]：\n   自身伤害 = 勇者攻击力 - 敌方防御力 (若 ≤0 则保底为 1 点)\n   受到伤害 = 敌方攻击力 - 勇者防御力 (若 ≤0 则保底为 0 点)\n\n2. [color=#00e676]回合数计算[/color]：\n   击杀所需回合 = ceil( 敌方生命值 / 自身单回合伤害 )\n\n3. [color=#ff9100]全战斗总损血[/color]：\n   总损血 = (击杀所需回合 - 1) × 受到伤害\n   (注：先手行动机制，若一击必杀则完全不受反击！)",
-              "button": "牢记在心"
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": []
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_board",
+            "type": "start",
+            "x": 40,
+            "y": 76,
+            "nextId": "act_board_read",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "act_board_read",
+            "type": "action",
+            "title": "🎬 阅读告示",
+            "x": 240,
+            "y": 60,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "王城战斗告示牌",
+                "speakerTitle": "王国骑士团战术手册",
+                "avatar": "🪧",
+                "text": "[color=#ffd700]【紫水晶骑士物语 · 经典回合制换血公式】[/color]\n\n1. [color=#ff5252]单回合真实伤害[/color]：\n   自身伤害 = 勇者攻击力 - 敌方防御力 (若 ≤0 则保底为 1 点)\n   受到伤害 = 敌方攻击力 - 勇者防御力 (若 ≤0 则保底为 0 点)\n\n2. [color=#00e676]回合数计算[/color]：\n   击杀所需回合 = ceil( 敌方生命值 / 自身单回合伤害 )\n\n3. [color=#ff9100]全战斗总损血[/color]：\n   总损血 = (击杀所需回合 - 1) × 受到伤害\n   (注：先手行动机制，若一击必杀则完全不受反击！)",
+                "button": "牢记在心"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": []
     },
     {
       "id": "evt_region_beach",
@@ -917,42 +1205,78 @@
       "desc": "走出王城大门后解锁的新区域：哥布林林地、阳光海滩、海滨码头与精灵村落。",
       "x": 1580,
       "y": 170,
-      "branches": [
-        {
-          "id": "b_region_open",
-          "title": "已解锁",
-          "when": [
-            "trig_castle_exited"
-          ],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "郊外与海滩",
-              "speakerTitle": "大世界探索",
-              "avatar": "🏖️",
-              "text": "[color=#00e676]恭喜你完成了【初始城堡】区域的全部探索！[/color]\n\n接下来的区域：\n• 🌳 [color=#ff9100]哥布林密林[/color]（钥匙门禁与宝箱探索）\n• ⛵ [color=#40c4ff]海滩木筏[/color]（搜集木材渡海前往精灵村）\n• 🧝‍♀️ [color=#e040fb]精灵村神殿[/color]（高阶攻防训练与魔法技能学习）",
-              "button": "继续前行"
-            }
-          ]
-        },
-        {
-          "id": "b_region_locked",
-          "title": "远眺 (未出城)",
-          "when": [],
-          "steps": [
-            {
-              "type": "say",
-              "speaker": "远方地平线",
-              "speakerTitle": "未知区域",
-              "avatar": "🌫️",
-              "text": "前方是通往王城郊外与海滩的宽阔平原，但大门守卫森严，必须先满足出城许可。",
-              "button": "返回"
-            }
-          ]
-        }
-      ],
-      "incomingTriggers": [
-        "trig_castle_exited"
+      "actionGraph": {
+        "nodes": [
+          {
+            "id": "start_beach",
+            "type": "start",
+            "x": 40,
+            "y": 143,
+            "nextId": "sel_beach",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "sel_beach",
+            "type": "selector",
+            "title": "🔀 区域放行判断",
+            "x": 240,
+            "y": 104,
+            "cases": [
+              {
+                "id": "case_exited",
+                "title": "已出城",
+                "checks": [
+                  {
+                    "op": "==",
+                    "value": true,
+                    "conditionId": "cond_castle_exited"
+                  }
+                ],
+                "targetId": "act_beach_open",
+                "defaultOptionIndex": 0
+              }
+            ],
+            "defaultTargetId": "act_beach_locked",
+            "defaultOptionIndex": 0
+          },
+          {
+            "id": "act_beach_open",
+            "type": "action",
+            "title": "🎬 已解锁区域指引",
+            "x": 560,
+            "y": 60,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "郊外与海滩",
+                "speakerTitle": "大世界探索",
+                "avatar": "🏖️",
+                "text": "[color=#00e676]恭喜你完成了【初始城堡】区域的全部探索！[/color]\n\n接下来的区域：\n• 🌳 [color=#ff9100]哥布林密林[/color]（钥匙门禁与宝箱探索）\n• ⛵ [color=#40c4ff]海滩木筏[/color]（搜集木材渡海前往精灵村）\n• 🧝‍♀️ [color=#e040fb]精灵村神殿[/color]（高阶攻防训练与魔法技能学习）",
+                "button": "继续前行"
+              }
+            ]
+          },
+          {
+            "id": "act_beach_locked",
+            "type": "action",
+            "title": "🎬 远眺 (未出城)",
+            "x": 560,
+            "y": 193,
+            "steps": [
+              {
+                "type": "say",
+                "speaker": "远方地平线",
+                "speakerTitle": "未知区域",
+                "avatar": "🌫️",
+                "text": "前方是通往王城郊外与海滩的宽阔平原，但大门守卫森严，必须先满足出城许可。",
+                "button": "返回"
+              }
+            ]
+          }
+        ]
+      },
+      "incomingConditions": [
+        "cond_castle_exited"
       ]
     }
   ],
@@ -1009,6 +1333,98 @@
         "achievements.no_use_money": "failed",
         "regions.castle_exited": true
       }
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cond_has_book",
+      "title": "🔍 condition: 持有冒险书",
+      "desc": "改变国王（日常指引 / 劝离公主）与离开城堡大门（门禁 1）的行为。",
+      "x": 460,
+      "y": 100,
+      "match": "all",
+      "conds": [
+        {
+          "var": "items.book",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_castle_tp",
+      "title": "🔍 condition: 传送点已激活",
+      "desc": "改变离开城堡大门（门禁 2）的行为。",
+      "x": 441,
+      "y": 223,
+      "match": "all",
+      "conds": [
+        {
+          "var": "teleports.castle",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_princess_in_party",
+      "title": "🔍 condition: 公主在队伍",
+      "desc": "改变公主的床（就寝回满HP）、大钟柜（领取私房钱）与国王（劝离公主）的行为。",
+      "x": 443,
+      "y": 352,
+      "match": "all",
+      "conds": [
+        {
+          "var": "party.princess",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_castle_exited",
+      "title": "🔍 condition: 已离开城堡",
+      "desc": "改变下个区域（郊外与海滩）的行为：未出城时为远眺，出城后开放。",
+      "x": 1220,
+      "y": 170,
+      "match": "all",
+      "conds": [
+        {
+          "var": "regions.castle_exited",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_has_hp_gem",
+      "title": "🔍 condition: 持有生命宝珠",
+      "desc": "改变女仆·小绿的行为：生命强化效果翻倍。",
+      "x": 640,
+      "y": 690,
+      "match": "all",
+      "conds": [
+        {
+          "var": "items.hp_gem",
+          "op": "==",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "cond_gold",
+      "title": "🔍 condition: 金币",
+      "desc": "改变女仆小黑、小白、小绿的行为：金币满足时开放能力强化训练。",
+      "x": 340,
+      "y": 450,
+      "match": "all",
+      "conds": [
+        {
+          "var": "hero.gold",
+          "op": ">=",
+          "value": 10
+        }
+      ]
     }
   ]
 }

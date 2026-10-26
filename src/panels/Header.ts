@@ -8,7 +8,7 @@ export class Header {
   private undoBtn: HTMLButtonElement;
   private redoBtn: HTMLButtonElement;
   private addEventBtn: HTMLButtonElement;
-  private addTriggerBtn: HTMLButtonElement;
+  private addConditionBtn: HTMLButtonElement;
   private mainGraphTools: HTMLElement | null;
   private subGraphTools: HTMLElement | null;
   private addActionBtn: HTMLButtonElement | null;
@@ -23,14 +23,14 @@ export class Header {
     private onResetLayout?: () => void,
     private canvas?: GraphCanvas | null,
     private onAddEvent?: () => void,
-    private onAddTrigger?: () => void
+    private onAddCondition?: () => void
   ) {
     this.playBtn = document.getElementById('modePlayBtn') as HTMLButtonElement;
     this.editBtn = document.getElementById('modeEditBtn') as HTMLButtonElement;
     this.undoBtn = document.getElementById('btnUndo') as HTMLButtonElement;
     this.redoBtn = document.getElementById('btnRedo') as HTMLButtonElement;
     this.addEventBtn = document.getElementById('btnAddEventHeader') as HTMLButtonElement;
-    this.addTriggerBtn = document.getElementById('btnAddTriggerHeader') as HTMLButtonElement;
+    this.addConditionBtn = (document.getElementById('btnAddConditionHeader') || document.getElementById('btnAddTriggerHeader')) as HTMLButtonElement;
     this.mainGraphTools = document.getElementById('mainGraphTools');
     this.subGraphTools = document.getElementById('subGraphTools');
     this.addActionBtn = document.getElementById('btnAddActionHeader') as HTMLButtonElement | null;
@@ -128,9 +128,9 @@ export class Header {
       }
     };
 
-    // 绑定 Event / Trigger 的按住拖拽生成与快捷点击创建
+    // 绑定 Event / Condition 的按住拖拽生成与快捷点击创建
     this.setupNodeDragCreation(this.addEventBtn, 'event');
-    this.setupNodeDragCreation(this.addTriggerBtn, 'trigger');
+    this.setupNodeDragCreation(this.addConditionBtn, 'condition');
 
     // 绑定 Action Tree 子图节点的按住拖拽生成与快捷点击创建
     if (this.addActionBtn) this.setupSubNodeDragCreation(this.addActionBtn, 'action');
@@ -167,7 +167,7 @@ export class Header {
 
   private setupNodeDragCreation(
     btn: HTMLButtonElement,
-    type: 'event' | 'trigger'
+    type: 'event' | 'condition' | 'trigger'
   ): void {
     let isMouseDown = false;
     let isDragging = false;
@@ -228,7 +228,7 @@ export class Header {
           // 创建紧随光标的半透明预览幽灵节点
           ghostEl = document.createElement('div');
           ghostEl.className = `node-drag-ghost ghost-${type} compact-node ${
-            type === 'event' ? 'event-node available' : 'condition-node trigger-node'
+            type === 'event' ? 'event-node available' : 'condition-node'
           }`;
 
           if (type === 'event') {
@@ -241,7 +241,7 @@ export class Header {
           } else {
             ghostEl.innerHTML = `
               <div class="cond-status-led" style="background:#10b981; box-shadow:0 0 8px #10b981;"></div>
-              <div class="node-title">⚡ trigger: 新条件</div>
+              <div class="node-title">🔍 condition: 新条件</div>
               <div class="node-port port-out"></div>
               <span class="ghost-hint-badge">拖拽中...</span>
             `;
@@ -312,7 +312,7 @@ export class Header {
         this.canvas.createNodeAtCenter(type);
       } else {
         if (type === 'event' && this.onAddEvent) this.onAddEvent();
-        if (type === 'trigger' && this.onAddTrigger) this.onAddTrigger();
+        if ((type === 'condition' || type === 'trigger') && this.onAddCondition) this.onAddCondition();
       }
     });
   }

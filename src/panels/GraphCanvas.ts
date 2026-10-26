@@ -2,11 +2,12 @@ import {
   EventDef,
   ProjectData,
   WorldState,
+  ConditionDef,
   ActionGraphNodeUnion
 } from '../core/types';
 import { project, ChangeSource } from '../core/project';
 import { appState } from '../core/state';
-import { evalTrigger, getEventStatus, runEvent } from '../core/engine';
+import { evalCondition, getEventStatus, runEvent } from '../core/engine';
 import { mainGraphEdges, varWriters, varReaders } from '../core/graph';
 import { RpgDialog } from './RpgDialog';
 
@@ -61,7 +62,7 @@ export class GraphCanvas {
   private btnPlayCurrentSubGraph: HTMLElement;
 
   private contextMenuEl: HTMLElement | null = null;
-  private connectingTrigId: string | null = null;
+  private connectingCondId: string | null = null;
   private connectingBannerEl: HTMLElement | null = null;
 
   constructor(private dialog: RpgDialog) {
@@ -93,7 +94,7 @@ export class GraphCanvas {
       if (e.key === 'Escape') {
         if (this.subConnectingSource) {
           this.cancelSubConnecting();
-        } else if (this.connectingTrigId) {
+        } else if (this.connectingCondId) {
           this.cancelConnecting();
         } else if (this.viewMode === 'subgraph') {
           appState.setSubGraphEventId(null);
@@ -104,7 +105,7 @@ export class GraphCanvas {
     });
 
     this.viewport.addEventListener('click', () => {
-      if (this.connectingTrigId) {
+      if (this.connectingCondId) {
         this.cancelConnecting();
       }
       if (this.subConnectingSource) {
@@ -242,25 +243,25 @@ export class GraphCanvas {
     this.nodesContainer.innerHTML = '';
     const p = project.get();
 
-    // 1. Trigger 节点
-    p.triggers.forEach((trig) => {
+    // 1. Condition 条件节点
+    (p.conditions || (p as any).triggers || []).forEach((cond: ConditionDef) => {
       const el = document.createElement('div');
-      el.id = `node-${trig.id}`;
-      el.className = 'graph-node condition-node trigger-node compact-node';
-      el.dataset.id = trig.id;
-      el.dataset.kind = 'trigger';
-      el.style.left = `${trig.x}px`;
-      el.style.top = `${trig.y}px`;
+      el.id = `node-${cond.id}`;
+      el.className = 'graph-node condition-node compact-node';
+      el.dataset.id = cond.id;
+      el.dataset.kind = 'condition';
+      el.style.left = `${cond.x}px`;
+      el.style.top = `${cond.y}px`;
       el.innerHTML = `
         <div class="cond-status-led"></div>
-        <div class="node-title">${this.escape(trig.title)}</div>
-        <div class="node-port port-out" data-tid="${trig.id}" title="点击此端点，再点击 Event 可建立连入关系"></div>
+        <div class="node-title">${this.escape(cond.title)}</div>
+        <div class="node-port port-out" data-tid="${cond.id}" title="点击此端点，再点击 Event 可建立依赖连线 (声明 Event 依赖该条件)"></div>
       `;
       el.querySelector('.port-out')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.startConnecting(trig.id);
+        this.startConnecting(cond.id);
       });
-      this.attachNodeInteraction(el, 'trigger', trig.id);
+      this.attachNodeInteraction(el, 'condition', cond.id);
       this.nodesContainer.appendChild(el);
     });
 
@@ -274,14 +275,14 @@ export class GraphCanvas {
       el.style.left = `${ev.x}px`;
       el.style.top = `${ev.y}px`;
       el.innerHTML = `
-        <div class="node-port port-in" data-eid="${ev.id}" title="Trigger 连入端点"></div>
+        <div class="node-port port-in" data-eid="${ev.id}" title="Condition 依赖端点 (从 Condition 连出接入此处，声明此 Event 依赖该条件)"></div>
         <div class="event-status-dot status-dot"></div>
         <div class="node-title">${this.escape(ev.title)}</div>
         <span class="event-status-pill status-pill"></span>
       `;
       el.querySelector('.port-in')?.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (this.connectingTrigId) {
+        if (this.connectingCondId) {
           this.completeConnecting(ev.id);
         }
       });
@@ -448,12 +449,13 @@ export class GraphCanvas {
               const checkDesc =
                 c.checks
                   .map((chk) => {
-                    const t = project.getTrigger(chk.triggerId);
-                    const title = t ? t.title.replace('⚡ trigger: ', '') : chk.triggerId;
+                    const cid = chk.conditionId || (chk as any).triggerId;
+                    const t = project.getCondition(cid);
+                    const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
                     const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
                     return `${title}${opVal}`;
                   })
-                  .join(' & ') || '无前置规则';
+                  .join(' & ') || '无前置条件';
 
               return `
               <div class="sub-node-row">
@@ -503,8 +505,9 @@ export class GraphCanvas {
                 o.checks && o.checks.length > 0
                   ? o.checks
                       .map((chk) => {
-                        const t = project.getTrigger(chk.triggerId);
-                        const title = t ? t.title.replace('⚡ trigger: ', '') : chk.triggerId;
+                        const cid = chk.conditionId || (chk as any).triggerId;
+                        const t = project.getCondition(cid);
+                        const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
                         const opVal = chk.op && chk.value !== undefined ? ` ${chk.op} ${chk.value}` : '';
                         return `${title}${opVal}`;
                       })
@@ -977,7 +980,7 @@ export class GraphCanvas {
 
   // ------------------------------------------------------------------ 节点交互 (拖拽 / 点击 / 双击试玩)
 
-  private attachNodeInteraction(el: HTMLElement, kind: 'event' | 'trigger', id: string): void {
+  private attachNodeInteraction(el: HTMLElement, kind: 'event' | 'condition' | 'trigger', id: string): void {
     let hasMoved = false;
 
     el.onmousedown = (e) => {
@@ -1007,7 +1010,9 @@ export class GraphCanvas {
         } else {
           project.change(
             (d) => {
-              const node = kind === 'event' ? d.events.find((x) => x.id === id) : d.triggers.find((x) => x.id === id);
+              const node = kind === 'event'
+                ? d.events.find((x) => x.id === id)
+                : (d.conditions || (d as any).triggers || []).find((x: ConditionDef) => x.id === id);
               if (node) {
                 node.x = newX;
                 node.y = newY;
@@ -1039,7 +1044,7 @@ export class GraphCanvas {
       e.stopPropagation();
       if (hasMoved) return;
 
-      if (this.connectingTrigId && kind === 'event') {
+      if (this.connectingCondId && kind === 'event') {
         this.completeConnecting(id);
         return;
       }
@@ -1082,17 +1087,17 @@ export class GraphCanvas {
   }
 
   // ------------------------------------------------------------------ 连线交互
-  private startConnecting(trigId: string): void {
-    this.connectingTrigId = trigId;
-    const trig = project.getTrigger(trigId);
-    const title = trig ? trig.title.replace('⚡ trigger: ', '') : trigId;
+  private startConnecting(condId: string): void {
+    this.connectingCondId = condId;
+    const cond = project.getCondition(condId);
+    const title = cond ? cond.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : condId;
     if (!this.connectingBannerEl) {
       this.connectingBannerEl = document.createElement('div');
       this.connectingBannerEl.className = 'connecting-banner';
       this.viewport.appendChild(this.connectingBannerEl);
     }
     this.connectingBannerEl.innerHTML = `
-      <span>🔗 正在连线：<b>${this.escape(title)}</b> ➔ 请点击目标 Event 节点完成连入</span>
+      <span>🔗 正在为 Condition [<b>${this.escape(title)}</b>] 建立依赖连线 ➔ 请点击目标 Event 节点完成依赖声明</span>
       <button id="btnCancelConnect" style="background:#334155; border:none; color:#f8fafc; border-radius:4px; padding:2px 8px; font-size:11px; cursor:pointer;">取消 (ESC)</button>
     `;
     this.connectingBannerEl.style.display = 'flex';
@@ -1103,29 +1108,32 @@ export class GraphCanvas {
   }
 
   private cancelConnecting(): void {
-    this.connectingTrigId = null;
+    this.connectingCondId = null;
     if (this.connectingBannerEl) {
       this.connectingBannerEl.style.display = 'none';
     }
   }
 
   private completeConnecting(evId: string): void {
-    const chosenTrigId = this.connectingTrigId;
+    const chosenCondId = this.connectingCondId;
     this.cancelConnecting();
-    if (!chosenTrigId) return;
+    if (!chosenCondId) return;
 
     project.change((d) => {
       const targetEv = d.events.find((x) => x.id === evId);
       if (targetEv) {
-        if (!targetEv.incomingTriggers) {
-          targetEv.incomingTriggers = [];
+        if (!targetEv.incomingConditions) {
+          targetEv.incomingConditions = targetEv.incomingTriggers ? [...targetEv.incomingTriggers] : [];
         }
-        if (!targetEv.incomingTriggers.includes(chosenTrigId)) {
-          targetEv.incomingTriggers.push(chosenTrigId);
+        if (!targetEv.incomingConditions.includes(chosenCondId)) {
+          targetEv.incomingConditions.push(chosenCondId);
+        }
+        if (targetEv.incomingTriggers && !targetEv.incomingTriggers.includes(chosenCondId)) {
+          targetEv.incomingTriggers.push(chosenCondId);
         }
       }
     }, 'structure');
-    appState.log(`已建立连入关系：${chosenTrigId} ➔ ${evId}`, true);
+    appState.log(`已建立依赖关系：Event [${evId}] 依赖 Condition [${chosenCondId}]`, true);
   }
 
   private getNodePos(id: string): LayoutPos {
@@ -1134,7 +1142,7 @@ export class GraphCanvas {
     }
     const ev = project.getEvent(id);
     if (ev) return { x: ev.x, y: ev.y };
-    const tr = project.getTrigger(id);
+    const tr = project.getCondition(id);
     if (tr) return { x: tr.x, y: tr.y };
     return { x: 0, y: 0 };
   }
@@ -1144,11 +1152,11 @@ export class GraphCanvas {
   public renderState(state: WorldState): void {
     const p = project.get();
 
-    // 1. Trigger 状态
-    p.triggers.forEach((trig) => {
-      const el = document.getElementById(`node-${trig.id}`);
+    // 1. Condition 状态
+    (p.conditions || (p as any).triggers || []).forEach((cond: ConditionDef) => {
+      const el = document.getElementById(`node-${cond.id}`);
       if (!el) return;
-      const ok = evalTrigger(p, state, trig);
+      const ok = evalCondition(p, state, cond);
       el.classList.toggle('satisfied', ok);
       el.classList.toggle('unsatisfied', !ok);
     });
@@ -1222,7 +1230,7 @@ export class GraphCanvas {
     }
   }
 
-  /** 顶层大图：清一色 Trigger ➔ Event */
+  /** 顶层大图：Condition ➔ Event（声明 Event 依赖哪些 Condition 前置条件） */
   private renderMainEdges(p: ProjectData, state: WorldState, sel: ReturnType<typeof appState.getSelection>): void {
     const edges = mainGraphEdges(p);
 
@@ -1231,28 +1239,28 @@ export class GraphCanvas {
       const toEl = document.getElementById(`node-${edge.to}`);
       if (!fromEl || !toEl) return;
 
-      const trig = project.getTrigger(edge.from);
+      const cond = project.getCondition(edge.from);
       const ev = project.getEvent(edge.to);
-      if (!trig || !ev) return;
+      if (!cond || !ev) return;
 
-      const posFrom = { x: trig.x, y: trig.y };
+      const posFrom = { x: cond.x, y: cond.y };
       const posTo = { x: ev.x, y: ev.y };
       const fromW = fromEl.offsetWidth || 180;
       const fromH = fromEl.offsetHeight || 38;
       const toW = toEl.offsetWidth || 200;
       const toH = toEl.offsetHeight || 38;
 
-      const trigActive = evalTrigger(p, state, trig);
+      const condActive = evalCondition(p, state, cond);
       const isSelected =
         sel &&
-        ((sel.kind === 'trigger' && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
+        (((sel.kind === 'condition' || sel.kind === 'trigger') && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
 
       let x1: number, y1: number, x2: number, y2: number;
       let cx1: number, cy1: number, cx2: number, cy2: number;
 
       // 判断相对方位
       if (posFrom.x + fromW <= posTo.x + 10) {
-        // Trigger 在左，Event 在右：常规流向
+        // Condition 在左，Event 在右：常规流向
         x1 = posFrom.x + fromW;
         y1 = posFrom.y + fromH * 0.5;
         x2 = posTo.x - 3;
@@ -1263,13 +1271,12 @@ export class GraphCanvas {
         cx2 = x2 - dx;
         cy2 = y2;
       } else if (posFrom.x >= posTo.x + toW - 10) {
-        // Trigger 在右，Event 在左：外部依赖反向回指（如 trigger ➔ 国王）
+        // Condition 在右，Event 在左：外部依赖反向回指（如 condition ➔ 国王）
         x1 = posFrom.x;
         y1 = posFrom.y + fromH * 0.5;
         x2 = posTo.x + toW + 3;
         y2 = posTo.y + toH * 0.5;
         const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
-        // 如果高度差较大，优雅弧线绕回；水平对齐则平直指向
         const dy = posTo.y - posFrom.y;
         cx1 = x1 - dx;
         cy1 = y1 + dy * 0.2;
@@ -1290,13 +1297,13 @@ export class GraphCanvas {
 
       this.drawSvgPath({
         d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`,
-        active: trigActive,
+        active: condActive,
         highlight: !!isSelected,
-        title: `${trig.title} ➔ 改变行为：${ev.title} (点击可断开连线)`,
+        title: `${cond.title} ➔ 依赖此条件：${ev.title} (点击可断开依赖连线)`,
         onClick: (e) => {
           e.stopPropagation();
-          project.disconnectTrigger(edge.to, edge.from);
-          appState.log(`✂️ 已断开连线：${trig.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
+          project.disconnectCondition(edge.to, edge.from);
+          appState.log(`✂️ 已断开依赖连线：${cond.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
         }
       });
     });
@@ -1443,17 +1450,19 @@ export class GraphCanvas {
     // 恢复标准三栏布局
     let evLeftIdx = 0;
     let evRightIdx = 0;
-    let trigIdx = 0;
+    let condIdx = 0;
 
     project.change((d) => {
-      d.triggers.forEach((t) => {
+      const allConds = d.conditions || (d as any).triggers || [];
+      allConds.forEach((t: ConditionDef) => {
         t.x = 460;
-        t.y = 100 + trigIdx * 140;
-        trigIdx++;
+        t.y = 100 + condIdx * 140;
+        condIdx++;
       });
       d.events.forEach((e) => {
-        // 判断放在左栏还是右栏：被 trigger 控制的放右栏，起始 source 放左栏
-        const hasInputs = (e.incomingTriggers?.length ?? 0) > 0;
+        // 判断放在左栏还是右栏：被 condition 控制的放右栏，起始 source 放左栏
+        const inConds = e.incomingConditions ?? e.incomingTriggers ?? [];
+        const hasInputs = inConds.length > 0;
         if (hasInputs) {
           e.x = 860;
           e.y = 120 + evRightIdx * 120;
@@ -1818,7 +1827,7 @@ export class GraphCanvas {
     return this.viewMode === 'focal';
   }
 
-  public createNodeAt(type: 'event' | 'trigger', canvasX: number, canvasY: number): string {
+  public createNodeAt(type: 'event' | 'condition' | 'trigger', canvasX: number, canvasY: number): string {
     if (this.viewMode === 'focal') {
       this.showMainGraph();
     }
@@ -1833,18 +1842,19 @@ export class GraphCanvas {
       this.pulseNode(ev.id);
       return ev.id;
     } else {
-      const tr = project.addTrigger(canvasX, canvasY);
-      appState.select({ kind: 'trigger', id: tr.id });
-      appState.log(`⚡ 拖拽生成 Trigger 条件判断器：[${tr.title}] (坐标: ${canvasX}, ${canvasY})`, true);
-      this.pulseNode(tr.id);
-      return tr.id;
+      const cond = project.addCondition(canvasX, canvasY);
+      appState.select({ kind: 'condition', id: cond.id });
+      appState.log(`🔍 拖拽生成 Condition 条件节点：[${cond.title}] (坐标: ${canvasX}, ${canvasY})`, true);
+      this.pulseNode(cond.id);
+      return cond.id;
     }
   }
 
-  public createNodeAtCenter(type: 'event' | 'trigger'): string {
+  public createNodeAtCenter(type: 'event' | 'condition' | 'trigger'): string {
     const center = this.getViewportCenterCanvasPos();
     const p = project.get();
-    const count = type === 'event' ? p.events.length : p.triggers.length;
+    const allConds = p.conditions || (p as any).triggers || [];
+    const count = type === 'event' ? p.events.length : allConds.length;
     const stagger = (count % 8) * 16;
     const x = Math.round(center.x - 70 + stagger);
     const y = Math.round(center.y - 18 + stagger);
@@ -1965,7 +1975,7 @@ export class GraphCanvas {
     } else {
       menu.innerHTML = `
         <div class="ctx-item" data-action="add-event">💬 新建 Event 对话/事件节点</div>
-        <div class="ctx-item" data-action="add-trigger">⚡ 新建 Trigger 条件判断器</div>
+        <div class="ctx-item" data-action="add-condition">🔍 新建 Condition 条件节点</div>
         <div class="ctx-divider"></div>
         <div class="ctx-item" data-action="reset-layout">📐 恢复标准排列布局</div>
       `;
@@ -1988,10 +1998,10 @@ export class GraphCanvas {
           const ev = project.addEvent(cx, cy);
           appState.select({ kind: 'event', id: ev.id });
           appState.log(`✨ 新建 Event 节点：[${ev.title}]`, true);
-        } else if (action === 'add-trigger') {
-          const tr = project.addTrigger(cx, cy);
-          appState.select({ kind: 'trigger', id: tr.id });
-          appState.log(`✨ 新建 Trigger 节点：[${tr.title}]`, true);
+        } else if (action === 'add-condition' || action === 'add-trigger') {
+          const cond = project.addCondition(cx, cy);
+          appState.select({ kind: 'condition', id: cond.id });
+          appState.log(`✨ 新建 Condition 条件节点：[${cond.title}]`, true);
         } else if (action === 'reset-layout') {
           this.resetLayout();
           appState.log('📐 已恢复标准任务布局！', true);

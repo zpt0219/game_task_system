@@ -1,7 +1,7 @@
 import {
   ProjectData,
   EventDef,
-  TriggerDef,
+  ConditionDef,
   VarDef,
   ActionGraphNodeUnion,
   ActionGraph
@@ -24,7 +24,7 @@ export function uid(prefix: string): string {
 }
 
 class ProjectStore {
-  private data: ProjectData = { version: 1, name: '', vars: [], triggers: [], events: [], presets: [] };
+  private data: ProjectData = { version: 1, name: '', vars: [], conditions: [], events: [], presets: [] };
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private lastCoalesceKey: string | null = null;
@@ -57,6 +57,38 @@ class ProjectStore {
         throw new Error(`读取 project 数据失败：API 失败 (${err}), 静态降级失败 (${fallbackErr})`);
       }
     }
+
+    // 结构规范化：兼容旧 triggers / incomingTriggers 字段
+    if (!this.data.conditions && (this.data as any).triggers) {
+      this.data.conditions = (this.data as any).triggers;
+    }
+    if (!this.data.conditions) {
+      this.data.conditions = [];
+    }
+    this.data.events.forEach((e) => {
+      if (!e.incomingConditions && e.incomingTriggers) {
+        e.incomingConditions = e.incomingTriggers;
+      }
+      if (!e.incomingConditions) {
+        e.incomingConditions = [];
+      }
+      e.actionGraph?.nodes?.forEach((n) => {
+        if (n.type === 'selector') {
+          n.cases?.forEach((c) => {
+            c.checks?.forEach((chk) => {
+              if (!chk.conditionId && chk.triggerId) chk.conditionId = chk.triggerId;
+            });
+          });
+        } else if (n.type === 'choice') {
+          n.options?.forEach((o) => {
+            o.checks?.forEach((chk) => {
+              if (!chk.conditionId && chk.triggerId) chk.conditionId = chk.triggerId;
+            });
+          });
+        }
+      });
+    });
+
     this.undoStack = [];
     this.redoStack = [];
     this.lastCoalesceKey = null;
@@ -116,8 +148,16 @@ class ProjectStore {
     return this.data.events.find((e) => e.id === id);
   }
 
-  public getTrigger(id: string): TriggerDef | undefined {
-    return this.data.triggers.find((t) => t.id === id);
+  public getConditions(): ConditionDef[] {
+    return this.data.conditions || this.data.triggers || [];
+  }
+
+  public getCondition(id: string): ConditionDef | undefined {
+    return this.getConditions().find((c) => c.id === id);
+  }
+
+  public getTrigger(id: string): ConditionDef | undefined {
+    return this.getCondition(id);
   }
 
   public getVar(key: string): VarDef | undefined {
@@ -189,6 +229,7 @@ class ProjectStore {
       sourceRef: '',
       x: Math.round(x),
       y: Math.round(y),
+      incomingConditions: [],
       incomingTriggers: [],
       actionGraph: {
         nodes: [
@@ -208,19 +249,27 @@ class ProjectStore {
     return ev;
   }
 
-  public addTrigger(x: number, y: number): TriggerDef {
+  public addCondition(x: number, y: number): ConditionDef {
     const firstBool = this.data.vars.find((v) => v.kind === 'bool') || this.data.vars[0];
-    const trig: TriggerDef = {
-      id: uid('trig'),
-      title: '⚡ trigger: 新条件',
+    const cond: ConditionDef = {
+      id: uid('cond'),
+      title: '🔍 condition: 新条件',
       desc: '',
       x: Math.round(x),
       y: Math.round(y),
       match: 'all',
       conds: firstBool ? [{ var: firstBool.key, op: '==', value: firstBool.kind === 'bool' ? true : firstBool.initial }] : []
     };
-    this.change((d) => d.triggers.push(trig), 'structure');
-    return trig;
+    this.change((d) => {
+      if (!d.conditions) d.conditions = [];
+      d.conditions.push(cond);
+      if (d.triggers) d.triggers = d.conditions;
+    }, 'structure');
+    return cond;
+  }
+
+  public addTrigger(x: number, y: number): ConditionDef {
+    return this.addCondition(x, y);
   }
 
   public deleteEvent(id: string): void {
@@ -229,21 +278,23 @@ class ProjectStore {
     }, 'structure');
   }
 
-  /** 删除 Trigger，同时清理 Action Tree 中对它的引用 */
-  public deleteTrigger(id: string): void {
+  /** 删除 Condition，同时清理 Event 所依赖列表中以及 Action Tree 中对它的引用 */
+  public deleteCondition(id: string): void {
     this.change((d) => {
-      d.triggers = d.triggers.filter((t) => t.id !== id);
+      if (d.conditions) d.conditions = d.conditions.filter((t) => t.id !== id);
+      if (d.triggers) d.triggers = d.triggers.filter((t) => t.id !== id);
       d.events.forEach((e) => {
+        if (e.incomingConditions) e.incomingConditions = e.incomingConditions.filter((w) => w !== id);
         if (e.incomingTriggers) e.incomingTriggers = e.incomingTriggers.filter((w) => w !== id);
         if (e.actionGraph?.nodes) {
           e.actionGraph.nodes.forEach((n) => {
             if (n.type === 'selector') {
               n.cases.forEach((c) => {
-                c.checks = c.checks.filter((chk) => chk.triggerId !== id);
+                c.checks = c.checks.filter((chk) => chk.conditionId !== id && chk.triggerId !== id);
               });
             } else if (n.type === 'choice') {
               n.options.forEach((o) => {
-                if (o.checks) o.checks = o.checks.filter((chk) => chk.triggerId !== id);
+                if (o.checks) o.checks = o.checks.filter((chk) => chk.conditionId !== id && chk.triggerId !== id);
               });
             }
           });
@@ -252,28 +303,39 @@ class ProjectStore {
     }, 'structure');
   }
 
-  /** 断开 Trigger 与 Event 的连线，同时清理 Event 动作树中的引用 */
-  public disconnectTrigger(eventId: string, triggerId: string): void {
+  public deleteTrigger(id: string): void {
+    this.deleteCondition(id);
+  }
+
+  /** 断开 Condition 与 Event 的依赖连线，同时清理 Event 动作树中的引用 */
+  public disconnectCondition(eventId: string, conditionId: string): void {
     this.change((d) => {
       const ev = d.events.find((e) => e.id === eventId);
       if (!ev) return;
+      if (ev.incomingConditions) {
+        ev.incomingConditions = ev.incomingConditions.filter((id) => id !== conditionId);
+      }
       if (ev.incomingTriggers) {
-        ev.incomingTriggers = ev.incomingTriggers.filter((id) => id !== triggerId);
+        ev.incomingTriggers = ev.incomingTriggers.filter((id) => id !== conditionId);
       }
       if (ev.actionGraph?.nodes) {
         ev.actionGraph.nodes.forEach((n) => {
           if (n.type === 'selector') {
             n.cases.forEach((c) => {
-              c.checks = c.checks.filter((chk) => chk.triggerId !== triggerId);
+              c.checks = c.checks.filter((chk) => chk.conditionId !== conditionId && chk.triggerId !== conditionId);
             });
           } else if (n.type === 'choice') {
             n.options.forEach((o) => {
-              if (o.checks) o.checks = o.checks.filter((chk) => chk.triggerId !== triggerId);
+              if (o.checks) o.checks = o.checks.filter((chk) => chk.conditionId !== conditionId && chk.triggerId !== conditionId);
             });
           }
         });
       }
     }, 'structure');
+  }
+
+  public disconnectTrigger(eventId: string, triggerId: string): void {
+    this.disconnectCondition(eventId, triggerId);
   }
 
   // ------------------------------------------------------------------ Action Tree 子图操作
@@ -337,7 +399,9 @@ class ProjectStore {
           {
             id: uid('case'),
             title: '分支 1',
-            checks: ev.incomingTriggers && ev.incomingTriggers.length > 0 ? [{ triggerId: ev.incomingTriggers[0] }] : []
+            checks: (ev.incomingConditions && ev.incomingConditions.length > 0)
+              ? [{ conditionId: ev.incomingConditions[0] }]
+              : ((ev.incomingTriggers && ev.incomingTriggers.length > 0) ? [{ conditionId: ev.incomingTriggers[0] }] : [])
           }
         ]
       };
@@ -399,21 +463,25 @@ class ProjectStore {
     }, 'structure');
   }
 
-  /** 引用了该 Trigger 的事件 */
-  public findTriggerRefs(id: string): { event: EventDef }[] {
+  /** 依赖了该 Condition 的事件 */
+  public findConditionRefs(id: string): { event: EventDef }[] {
     const refs: { event: EventDef }[] = [];
     this.data.events.forEach((event) => {
       let used = false;
-      if (event.incomingTriggers?.includes(id)) used = true;
+      if (event.incomingConditions?.includes(id) || event.incomingTriggers?.includes(id)) used = true;
       if (event.actionGraph?.nodes) {
         event.actionGraph.nodes.forEach((n) => {
-          if (n.type === 'selector' && n.cases.some((c) => c.checks.some((chk) => chk.triggerId === id))) used = true;
-          if (n.type === 'choice' && n.options.some((o) => o.checks?.some((chk) => chk.triggerId === id))) used = true;
+          if (n.type === 'selector' && n.cases.some((c) => c.checks.some((chk) => chk.conditionId === id || chk.triggerId === id))) used = true;
+          if (n.type === 'choice' && n.options.some((o) => o.checks?.some((chk) => chk.conditionId === id || chk.triggerId === id))) used = true;
         });
       }
       if (used) refs.push({ event });
     });
     return refs;
+  }
+
+  public findTriggerRefs(id: string): { event: EventDef }[] {
+    return this.findConditionRefs(id);
   }
 
   // ------------------------------------------------------------------ 变量
@@ -437,8 +505,8 @@ class ProjectStore {
   /** 变量被引用的位置描述（用于删除前提示） */
   public findVarRefs(key: string): string[] {
     const refs: string[] = [];
-    this.data.triggers.forEach((t) => {
-      if (t.conds.some((c) => c.var === key)) refs.push(`Trigger「${t.title}」`);
+    this.getConditions().forEach((t) => {
+      if (t.conds.some((c) => c.var === key)) refs.push(`Condition「${t.title}」`);
     });
     this.data.events.forEach((e) => {
       let used = false;
@@ -468,7 +536,7 @@ class ProjectStore {
     this.change((d) => {
       const v = d.vars.find((x) => x.key === oldKey);
       if (v) v.key = newKey;
-      d.triggers.forEach((t) => t.conds.forEach((c) => c.var === oldKey && (c.var = newKey)));
+      (d.conditions || (d as any).triggers || []).forEach((t: ConditionDef) => t.conds.forEach((c) => c.var === oldKey && (c.var = newKey)));
       d.events.forEach((e) => {
         e.actionGraph?.nodes?.forEach((n) => {
           if (n.type === 'action') {

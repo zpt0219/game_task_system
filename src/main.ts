@@ -72,12 +72,12 @@ async function initApp(): Promise<void> {
           appState.select(null);
           appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]（Ctrl+Z 可撤销）`);
         }
-      } else if (sel.kind === 'trigger') {
-        const tr = project.getTrigger(sel.id);
-        if (tr) {
-          project.deleteTrigger(tr.id);
+      } else if (sel.kind === 'condition' || sel.kind === 'trigger') {
+        const cond = project.getCondition(sel.id);
+        if (cond) {
+          project.deleteCondition(cond.id);
           appState.select(null);
-          appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
+          appState.log(`🗑️ 已删除 Condition 节点：[${cond.title}]（Ctrl+Z 可撤销）`);
         }
       } else if (sel.kind === 'subnode') {
         const node = project.getGraphNode(sel.eventId, sel.id);
@@ -90,8 +90,8 @@ async function initApp(): Promise<void> {
     }
   });
 
-  appState.log('🔮 《紫水晶骑士物语》任务与 Trigger 依赖图谱初始化完成！', true);
-  appState.log('💡 提示：在【编辑模式】下，可任意添加/删除/修改 Event 与 Trigger 节点，自动持久化至 data/castle.json。');
+  appState.log('🔮 《紫水晶骑士物语》任务与 Condition 依赖图谱初始化完成！', true);
+  appState.log('💡 提示：在【编辑模式】下，可任意添加/删除/修改 Event 与 Condition 节点，自动持久化至 data/castle.json。');
 }
 
 window.addEventListener('DOMContentLoaded', () => {

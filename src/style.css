@@ -548,18 +548,21 @@ body.is-resizing {
   border-style: dashed;
 }
 
+.condition-node,
 .condition-node.trigger-node {
   border-radius: 18px;
   background: #0d1527;
   border-color: #6366f1;
 }
 
+.condition-node.satisfied,
 .condition-node.trigger-node.satisfied {
   border-color: #10b981;
   background: rgba(16, 185, 129, 0.15);
   box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
 }
 
+.condition-node.unsatisfied,
 .condition-node.trigger-node.unsatisfied {
   border-color: #475569;
   border-style: dashed;

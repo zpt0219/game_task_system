@@ -6,8 +6,8 @@
 
 ### 核心设计原则
 1. **顶层条件唯一真相源（Single Source of Truth）**：
-   - 所有条件判断统一声明为顶层大图的 `⚡ Trigger` 节点，并通过连线接入 `Event`。
-   - 外部只需连入 **1 个** `Trigger`（如 `⚡ trigger: 金币`），Event 内部即可针对该 Trigger 灵活配置不同判断阈值（如 `>= 100`、`>= 10`），彻底消除隐藏条件，让顶层大图 100% 反映全局数据依赖。
+   - 所有状态与条件判断统一声明为顶层大图的 `🔍 Condition` 节点，描述 Event 依赖了哪些前置条件。
+   - 外部只需连入 **1 个** `Condition`（如 `🔍 condition: 金币`），Event 内部即可针对该 Condition 灵活配置不同判断阈值（如 `>= 100`、`>= 10`），彻底消除隐藏条件，让顶层大图 100% 反映全局数据依赖与任务前提。
 2. **复合动作不拆碎，分支/选项才分流**：
    - 连续的对话与变量修改收纳在单个 **`🎬 Action`（复合动作节点）** 中顺序执行；只有遇到条件分支（`Selector`）、玩家选项（`Choice`）或路径合流时才拆分为独立节点。
 3. **连线即控制流（天然支持顺序、合流与循环回跳）**：
@@ -24,7 +24,7 @@
 
 | 层级 | 视图名称 | 节点构成 | 连线含义 | 核心职责 |
 | :--- | :--- | :--- | :--- | :--- |
-| **L1 顶层** | **全局任务依赖图**<br>*(Main Graph)* | `⚡ Trigger` (条件信号源)<br>`💬 Event` (事件节点) | `Trigger ➔ Event`<br>声明该事件依赖哪些外部条件信号 | 鸟瞰全图任务拓扑、围绕任意道具/状态查看上下游因果关系 |
+| **L1 顶层** | **全局任务依赖图**<br>*(Main Graph)* | `🔍 Condition` (前置条件节点)<br>`💬 Event` (任务/事件节点) | `Condition ➔ Event`<br>声明该事件依赖哪些外部条件 | 鸟瞰全图任务拓扑、围绕任意道具/状态查看上下游因果关系 |
 | **L2 内层** | **事件 Action Tree 子图**<br>*(Event Sub-Graph)* | `▶ Start` (入口)<br>`🔀 Selector` (多路选择)<br>`💬 Choice` (玩家选项)<br>`🎬 Action` (复合动作) | `Out 端口 ➔ In 端口`<br>表达事件内部的顺序、分支、合流与回跳循环 | 编写事件内部的具体判断逻辑、对话台词、状态修改与循环交互 |
 
 ---
@@ -43,9 +43,9 @@
   - 左侧：`1 个 In`（支持多线汇入或循环回跳汇入）
   - 右侧：**N 个条件分支输出端口（`Case 1`, `Case 2`, ...）** + 底部固定 **1 个 `Default (保底)` 输出端口**。
 - **判断逻辑**：
-  - 每个分支（Case）可添加 1 条或多条针对**已连入当前 Event 的 Trigger** 的判断规则（`TriggerCheck`）：
-    - 若 Trigger 绑定布尔变量（如 `items.book`），可直接判 `== true`（满足）或 `== false`（不满足）。
-    - 若 Trigger 绑定数值/枚举变量（如 `hero.gold`），可配置比较符与阈值（如 `>= 100`、`>= 10`）。
+  - 每个分支（Case）可添加 1 条或多条针对**当前 Event 所依赖的 Condition** 的判断规则（`ConditionCheck`）：
+    - 若 Condition 绑定布尔变量（如 `items.book`），可直接判 `== true`（满足）或 `== false`（不满足）。
+    - 若 Condition 绑定数值/枚举变量（如 `hero.gold`），可配置比较符与阈值（如 `>= 100`、`>= 10`）。
   - 运行时**从上到下依次求值**，命中**第一个满足条件**的分支，即沿其右侧 `Out` 端口流向下一节点；若所有条件分支均不满足，则走底部的 `Default` 端口。
 
 ### 3.3 `💬 Choice`（玩家选项分流节点）
@@ -57,9 +57,9 @@
   - 不同上游节点连入同一个 `Choice` 时，可根据各自上下文指定不同的默认焦点选项（例如：从 `Start` 初次进入默认选中第 `0` 项；而从“训练 1 次”动作节点循环回跳连入时，可将默认选中 `index` 设为 `1`，使焦点保持在“训练 1 次”选项上）。
 - **节点内容**：
   - 提问台词配置：说话人（`speaker`）、头衔（`speakerTitle`）、头像（`avatar`）、台词正文（`text`）。
-  - 选项列表（`options`）：每项包含按钮文案（`text`）、按钮样式（`primary / secondary / danger`）以及可选的**前置 Trigger 条件（`checks`）**。
+  - 选项列表（`options`）：每项包含按钮文案（`text`）、按钮样式（`primary / secondary / danger`）以及可选的**前置 Condition 条件（`checks`）**。
 - **运行逻辑**：
-  - 弹出 RPG 选项对话框，并根据当前进入该节点的连线所配置的 `defaultOptionIndex`（默认 `0`，即最上面一项）高亮/聚焦默认选项；若某选项配置了前置 Trigger 条件（如 `金币 >= 100`）且当前不满足，该选项按钮在弹窗中自动**置灰禁用**。
+  - 弹出 RPG 选项对话框，并根据当前进入该节点的连线所配置的 `defaultOptionIndex`（默认 `0`，即最上面一项）高亮/聚焦默认选项；若某选项配置了前置 Condition 条件（如 `金币 >= 100`）且当前不满足，该选项按钮在弹窗中自动**置灰禁用**。
   - 玩家点击（或按确认键选择）某个可用选项后，沿该选项对应的 `Out` 端口流向下一个节点（若某选项 `Out` 未连线，则点击后直接结束对话）。
   - 不同选项的后续节点可以连入同一个下游节点的 `In`（合流），也可以连回当前 `Choice` 节点的 `In`（循环加点，并保持对应选项的默认选中 `index`）。
 
@@ -78,9 +78,9 @@
 
 ## 4. 典型业务场景图解
 
-### 场景 A：`⚔️ 女仆·小黑 (攻击训练)` —— 单金币 Trigger 多阈值 + 连线直接回跳循环
+### 场景 A：`⚔️ 女仆·小黑 (攻击训练)` —— 单金币 Condition 多阈值 + 连线直接回跳循环
 
-- **顶层大图**：`⚡ trigger: 金币 (hero.gold)` ──连入──➔ `⚔️ 女仆·小黑 (攻击)`
+- **顶层大图**：`🔍 condition: 金币 (hero.gold)` ──连入──➔ `⚔️ 女仆·小黑 (攻击)`
 - **内部 Action Tree 子图**：
 
 ```mermaid
@@ -100,7 +100,7 @@ flowchart LR
 
 ### 场景 B：`👑 国王 (king_conversation)` —— 多路 Selector + 选项分流与合流
 
-- **顶层大图**：`⚡ trigger: 持有冒险书` 与 `⚡ trigger: 公主在队伍` ──连入──➔ `👑 国王`
+- **顶层大图**：`🔍 condition: 持有冒险书` 与 `🔍 condition: 公主在队伍` ──连入──➔ `👑 国王`
 - **内部 Action Tree 子图**：
 
 ```mermaid
@@ -120,10 +120,10 @@ flowchart LR
 ## 5. 数据结构规范 (TypeScript Interfaces)
 
 ```typescript
-/** 内部节点对已连入 Trigger 的具体判断规则 */
-export interface TriggerCheck {
-  triggerId: string;   // 必须属于当前 Event 的 incomingTriggers
-  op?: CompareOp;      // 比较符（如 '==', '>='），默认使用 Trigger 主条件的比较符
+/** 内部节点对所依赖 Condition 的具体判断规则 */
+export interface ConditionCheck {
+  conditionId: string; // 必须属于当前 Event 所依赖的 incomingConditions
+  op?: CompareOp;      // 比较符（如 '==', '>='），默认使用 Condition 主条件的比较符
   value?: VarValue;    // 比较阈值（如 true, false, 100, 10）
 }
 

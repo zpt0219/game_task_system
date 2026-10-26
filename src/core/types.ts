@@ -31,8 +31,8 @@ export interface CmpCond {
   value: VarValue;
 }
 
-/** Trigger 节点：只做判断，用来改变 Event 的行为 */
-export interface TriggerDef {
+/** Condition 节点：只做状态条件判断，Event 节点可声明依赖哪些 Condition */
+export interface ConditionDef {
   id: string;
   title: string;
   desc?: string;
@@ -41,6 +41,8 @@ export interface TriggerDef {
   match: 'all' | 'any';
   conds: CmpCond[];
 }
+/** 别名兼容 */
+export type TriggerDef = ConditionDef;
 
 export type ButtonStyle = 'primary' | 'secondary' | 'danger';
 
@@ -92,12 +94,15 @@ export type StepType = Step['type'];
 /** 复合 Action 节点内的原子步骤（不含嵌套分支） */
 export type AtomicStep = SayStep | SetStep | AddStep;
 
-/** 内部节点对已连入 Trigger 的具体判断规则 */
-export interface TriggerCheck {
-  triggerId: string;   // 必须属于当前 Event 的 incomingTriggers
-  op?: CompareOp;      // 比较符（如 '==', '!=', '>=', '<='），默认使用 Trigger 主条件的比较符
+/** 内部节点对已依赖 Condition 的具体判断规则 */
+export interface ConditionCheck {
+  conditionId: string; // 必须属于当前 Event 所依赖的 incomingConditions
+  op?: CompareOp;      // 比较符（如 '==', '!=', '>=', '<='），默认使用 Condition 主条件的比较符
   value?: VarValue;    // 比较阈值（如 true, false, 100, 10）
+  triggerId?: string;  // 兼容旧字段
 }
+/** 别名兼容 */
+export type TriggerCheck = ConditionCheck;
 
 /** 1. 入口节点 (Start) */
 export interface StartGraphNode {
@@ -113,7 +118,7 @@ export interface StartGraphNode {
 export interface SelectorCase {
   id: string;
   title: string;
-  checks: TriggerCheck[];      // 全部满足时命中此分支
+  checks: ConditionCheck[];    // 全部满足时命中此分支
   targetId?: string;           // 该分支 Out 端口指向的节点 ID
   defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0）
 }
@@ -134,7 +139,7 @@ export interface ChoiceGraphOption {
   id: string;
   text: string;
   style?: ButtonStyle;
-  checks?: TriggerCheck[];     // 选项可用前置条件（基于连入的 Trigger，如 金币 >= 100）
+  checks?: ConditionCheck[];   // 选项可用前置条件（基于连入的 Condition，如 金币 >= 100）
   targetId?: string;           // 该选项 Out 端口指向的节点 ID
   defaultOptionIndex?: number; // 若目标为 Choice 节点，指定默认选中的选项 index（默认 0）
 }
@@ -175,7 +180,7 @@ export interface ActionGraph {
   nodes: ActionGraphNodeUnion[];
 }
 
-/** Event 节点：玩家可触发；其内部由 Action Tree 有向流图控制 */
+/** Event 节点：玩家可触发；其描述依赖了哪些 Condition 前置条件，其内部由 Action Tree 有向流图控制 */
 export interface EventDef {
   id: string;
   title: string;
@@ -183,8 +188,9 @@ export interface EventDef {
   sourceRef?: string;
   x: number;
   y: number;
-  incomingTriggers?: string[]; // 连入此 Event 的 Trigger ID 列表 (输入信号)
-  actionGraph: ActionGraph;    // 事件内部 Action Tree 有向流图
+  incomingConditions?: string[]; // 连入此 Event 所依赖的 Condition ID 列表
+  incomingTriggers?: string[];   // 兼容字段
+  actionGraph: ActionGraph;      // 事件内部 Action Tree 有向流图
 }
 
 export interface PresetDef {
@@ -197,7 +203,8 @@ export interface ProjectData {
   version: number;
   name: string;
   vars: VarDef[];
-  triggers: TriggerDef[];
+  conditions: ConditionDef[];    // 全局 Condition 条件节点 (描述事件所依赖的前置条件)
+  triggers?: ConditionDef[];     // 兼容字段
   events: EventDef[];
   presets: PresetDef[];
 }
@@ -205,11 +212,12 @@ export interface ProjectData {
 /** 运行时世界状态：变量 key -> 当前值 */
 export type WorldState = Record<string, VarValue>;
 
-export type NodeKind = 'event' | 'trigger';
+export type NodeKind = 'event' | 'condition' | 'trigger';
 
 /** 当前选中项 */
 export type Selection =
   | { kind: 'event'; id: string }
+  | { kind: 'condition'; id: string }
   | { kind: 'trigger'; id: string }
   | { kind: 'var'; id: string }
   | { kind: 'subnode'; id: string; eventId: string }

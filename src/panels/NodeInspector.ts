@@ -1,7 +1,7 @@
 import {
   CmpCond,
   EventDef,
-  TriggerDef,
+  ConditionDef,
   VarDef,
   ActionGraphNodeUnion,
   StartGraphNode,
@@ -9,12 +9,12 @@ import {
   ChoiceGraphNode,
   ActionGraphNode,
   AtomicStep,
-  TriggerCheck
+  ConditionCheck
 } from '../core/types';
 import { project, uid } from '../core/project';
 import { appState } from '../core/state';
-import { evalCond, evalTrigger, getEventStatus, runEvent } from '../core/engine';
-import { varWriters, varReaders, eventsControlledBy, varsWrittenBy } from '../core/graph';
+import { evalCond, evalCondition, getEventStatus, runEvent } from '../core/engine';
+import { varWriters, varReaders, eventsDependingOn, varsWrittenBy } from '../core/graph';
 import { RpgDialog } from './RpgDialog';
 
 export class NodeInspector {
@@ -54,9 +54,9 @@ export class NodeInspector {
       const ev = project.getEvent(sel.id);
       if (ev) this.renderEventInspector(ev);
       else this.renderEmpty();
-    } else if (sel.kind === 'trigger') {
-      const tr = project.getTrigger(sel.id);
-      if (tr) this.renderTriggerInspector(tr);
+    } else if (sel.kind === 'condition' || sel.kind === 'trigger') {
+      const cond = project.getCondition(sel.id);
+      if (cond) this.renderConditionInspector(cond);
       else this.renderEmpty();
     } else if (sel.kind === 'var') {
       const v = project.getVar(sel.id);
@@ -69,6 +69,7 @@ export class NodeInspector {
 
   private renderEmpty(): void {
     const p = project.get();
+    const conds = project.getConditions();
     this.container.innerHTML = `
       <div class="empty-inspector">
         <div style="font-size: 38px; margin-bottom: 10px; opacity: 0.7;">🔮</div>
@@ -76,7 +77,7 @@ export class NodeInspector {
           任务图谱总览态
         </div>
         <div style="font-size: 12px; color: #9ca3af; line-height: 1.6; text-align: center; margin-bottom: 16px;">
-          点击画布上的 <b>Event</b> 或 <b>Trigger</b> 节点可检视与编辑；<br/>
+          点击画布上的 <b>Event</b> 或 <b>Condition</b> 节点可检视与编辑；<br/>
           也可点击左侧栏的 <b>人物/道具/传送点</b> 查看其专属因果图谱。
         </div>
 
@@ -87,8 +88,8 @@ export class NodeInspector {
             <b>${p.events.length} 个</b>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>⚡ Trigger 条件判断器：</span>
-            <b>${p.triggers.length} 个</b>
+            <span>🔍 Condition 条件节点：</span>
+            <b>${conds.length} 个</b>
           </div>
           <div style="display: flex; justify-content: space-between;">
             <span>🎒 注册变量 / 道具 / 状态：</span>
@@ -97,7 +98,7 @@ export class NodeInspector {
         </div>
 
         <div style="margin-top: 16px; font-size: 11px; color: #64748b; line-height: 1.5; text-align: center;">
-          💡 快捷技巧：在画布空白区域<b>单击右键</b>即可在光标位置新建 Event 或 Trigger。
+          💡 快捷技巧：在画布空白区域<b>单击右键</b>即可在光标位置新建 Event 或 Condition。
         </div>
       </div>
     `;
@@ -228,31 +229,31 @@ export class NodeInspector {
       );
     });
 
-    // 3. 连入的 Trigger 管理 (输入信号)
-    const incomingTrigIds = ev.incomingTriggers ?? [];
+    // 3. 依赖的前置条件 (Conditions) 管理
+    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
     const trigCard = document.createElement('div');
     trigCard.className = 'inspector-section';
     trigCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <div class="inspector-label" style="margin-bottom: 0;">
-          ⚡ 连入的 Trigger (输入信号：${incomingTrigIds.length})
+          🔍 依赖的前置条件 (Conditions：${incomingCondIds.length})
         </div>
         <button id="btnConnectTrig" class="mini-btn-action" style="padding: 2px 8px; font-size: 11px;">
-          + 连入 Trigger
+          + 关联 Condition
         </button>
       </div>
       <div id="incomingTrigsContainer" style="display: flex; flex-wrap: wrap; gap: 6px;">
         ${
-          incomingTrigIds.length === 0
-            ? '<div style="font-size: 11px; color: #64748b; padding: 2px 0;">💡 暂无连入 Trigger (此 Event 仅执行默认行为)</div>'
-            : incomingTrigIds
-                .map((tid) => {
-                  const trig = p.triggers.find((t) => t.id === tid);
-                  const title = trig ? trig.title.replace('⚡ trigger: ', '') : tid;
+          incomingCondIds.length === 0
+            ? '<div style="font-size: 11px; color: #64748b; padding: 2px 0;">💡 暂无依赖 Condition (此 Event 仅执行默认行为)</div>'
+            : incomingCondIds
+                .map((cid) => {
+                  const cond = project.getCondition(cid);
+                  const title = cond ? cond.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
                   return `
               <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; border-radius: 4px; padding: 2px 6px;">
-                <span>⚡ ${this.escape(title)}</span>
-                <button class="btn-disconnect-trig" data-tid="${tid}" style="background: none; border: none; color: #f87171; cursor: pointer; font-size: 13px; font-weight: bold; padding: 0 2px; line-height: 1;" title="断开连线">×</button>
+                <span>🔍 ${this.escape(title)}</span>
+                <button class="btn-disconnect-trig" data-tid="${cid}" style="background: none; border: none; color: #f87171; cursor: pointer; font-size: 13px; font-weight: bold; padding: 0 2px; line-height: 1;" title="断开依赖">×</button>
               </span>
             `;
                 })
@@ -262,15 +263,16 @@ export class NodeInspector {
     `;
     this.container.appendChild(trigCard);
 
-    // 绑定连入 Trigger
+    // 绑定关联 Condition
     trigCard.querySelector('#btnConnectTrig')?.addEventListener('click', () => {
-      const available = p.triggers.filter((t) => !incomingTrigIds.includes(t.id));
+      const allConds = project.getConditions();
+      const available = allConds.filter((t) => !incomingCondIds.includes(t.id));
       if (available.length === 0) {
-        alert('项目中暂无更多可连入的 Trigger！');
+        alert('项目中暂无更多可依赖的 Condition！');
         return;
       }
-      const names = available.map((t, idx) => `${idx + 1}. ${t.title.replace('⚡ trigger: ', '')}`).join('\n');
-      const input = prompt(`请选择要连入此 Event 的 Trigger (输入序号 1~${available.length})：\n\n${names}`);
+      const names = available.map((t, idx) => `${idx + 1}. ${t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '')}`).join('\n');
+      const input = prompt(`请选择要让此 Event 依赖的 Condition (输入序号 1~${available.length})：\n\n${names}`);
       if (!input) return;
       const idx = parseInt(input.trim(), 10) - 1;
       if (idx >= 0 && idx < available.length) {
@@ -278,8 +280,11 @@ export class NodeInspector {
         project.change((d) => {
           const targetEv = d.events.find((x) => x.id === ev.id);
           if (targetEv) {
-            if (!targetEv.incomingTriggers) targetEv.incomingTriggers = [];
-            if (!targetEv.incomingTriggers.includes(chosen.id)) {
+            if (!targetEv.incomingConditions) targetEv.incomingConditions = targetEv.incomingTriggers ? [...targetEv.incomingTriggers] : [];
+            if (!targetEv.incomingConditions.includes(chosen.id)) {
+              targetEv.incomingConditions.push(chosen.id);
+            }
+            if (targetEv.incomingTriggers && !targetEv.incomingTriggers.includes(chosen.id)) {
               targetEv.incomingTriggers.push(chosen.id);
             }
           }
@@ -287,12 +292,12 @@ export class NodeInspector {
       }
     });
 
-    // 绑定断开 Trigger
+    // 绑定断开 Condition
     trigCard.querySelectorAll('.btn-disconnect-trig').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tid = (btn as HTMLElement).dataset.tid;
-        if (!tid) return;
-        project.disconnectTrigger(ev.id, tid);
+        const cid = (btn as HTMLElement).dataset.tid;
+        if (!cid) return;
+        project.disconnectCondition(ev.id, cid);
       });
     });
 
@@ -885,7 +890,7 @@ export class NodeInspector {
 
   // 3. Selector 多路条件分支节点编辑
   private renderSelectorNodeInspector(ev: EventDef, node: SelectorGraphNode): void {
-    const incomingTrigIds = ev.incomingTriggers || [];
+    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
 
     // 标题卡片
     const titleCard = document.createElement('div');
@@ -928,7 +933,7 @@ export class NodeInspector {
           targetNode.cases.push({
             id: uid('case'),
             title: `分支 ${targetNode.cases.length + 1}`,
-            checks: incomingTrigIds.length > 0 ? [{ triggerId: incomingTrigIds[0] }] : []
+            checks: incomingCondIds.length > 0 ? [{ conditionId: incomingCondIds[0] }] : []
           });
         }
       }, 'structure');
@@ -955,9 +960,9 @@ export class NodeInspector {
         </div>
 
         <div style="font-size:10px; font-weight:700; color:#38bdf8; margin:6px 0 4px; display:flex; justify-content:space-between; align-items:center;">
-          <span>⚡ 连入 Trigger 判断规则 (需全部满足)：</span>
+          <span>🔍 依赖 Condition 判断规则 (需全部满足)：</span>
           ${
-            incomingTrigIds.length > 0
+            incomingCondIds.length > 0
               ? `<button class="mini-btn btn-add-check" style="font-size:9px; padding:1px 5px;">+ 判断规则</button>`
               : ''
           }
@@ -997,8 +1002,8 @@ export class NodeInspector {
       caseEl.querySelector('.btn-add-check')?.addEventListener('click', () => {
         project.change((d) => {
           const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
-          if (targetNode && targetNode.type === 'selector' && incomingTrigIds.length > 0) {
-            targetNode.cases[cIdx]?.checks.push({ triggerId: incomingTrigIds[0] });
+          if (targetNode && targetNode.type === 'selector' && incomingCondIds.length > 0) {
+            targetNode.cases[cIdx]?.checks.push({ conditionId: incomingCondIds[0] });
           }
         }, 'structure');
       });
@@ -1087,7 +1092,7 @@ export class NodeInspector {
 
   // 4. Choice 玩家选项分流节点编辑
   private renderChoiceNodeInspector(ev: EventDef, node: ChoiceGraphNode): void {
-    const incomingTrigIds = ev.incomingTriggers || [];
+    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
 
     // 提问信息卡片
     const askCard = document.createElement('div');
@@ -1222,7 +1227,7 @@ export class NodeInspector {
         <div style="font-size:10px; font-weight:700; color:#f59e0b; margin:6px 0 4px; display:flex; justify-content:space-between; align-items:center;">
           <span>前置可用条件 (不满足置灰)：</span>
           ${
-            incomingTrigIds.length > 0
+            incomingCondIds.length > 0
               ? `<button class="mini-btn btn-add-opt-check" style="font-size:9px; padding:1px 5px;">+ 前置条件</button>`
               : ''
           }
@@ -1273,10 +1278,10 @@ export class NodeInspector {
       oEl.querySelector('.btn-add-opt-check')?.addEventListener('click', () => {
         project.change((d) => {
           const targetNode = d.events.find((e) => e.id === ev.id)?.actionGraph?.nodes.find((n) => n.id === node.id);
-          if (targetNode && targetNode.type === 'choice' && incomingTrigIds.length > 0) {
+          if (targetNode && targetNode.type === 'choice' && incomingCondIds.length > 0) {
             const o = targetNode.options[oIdx];
             if (!o.checks) o.checks = [];
-            o.checks.push({ triggerId: incomingTrigIds[0] });
+            o.checks.push({ conditionId: incomingCondIds[0] });
           }
         }, 'structure');
       });
@@ -1340,19 +1345,19 @@ export class NodeInspector {
     });
   }
 
-  /** 渲染一条针对连入 Trigger 的比较规则 (TriggerCheck) */
-  private renderCheckRow(ev: EventDef, check: TriggerCheck, onDelete: () => void): HTMLElement {
-    const p = project.get();
-    const incomingTrigIds = ev.incomingTriggers || [];
+  /** 渲染一条针对所依赖 Condition 的比较规则 (ConditionCheck) */
+  private renderCheckRow(ev: EventDef, check: ConditionCheck, onDelete: () => void): HTMLElement {
+    const incomingCondIds = ev.incomingConditions ?? ev.incomingTriggers ?? [];
     const row = document.createElement('div');
     row.style.cssText =
       'display:grid; grid-template-columns: 1fr 60px 70px 24px; gap:4px; align-items:center; margin-bottom:4px;';
 
-    const trigOptions = incomingTrigIds
-      .map((tid) => {
-        const t = p.triggers.find((x) => x.id === tid);
-        const title = t ? t.title.replace('⚡ trigger: ', '') : tid;
-        return `<option value="${tid}" ${tid === check.triggerId ? 'selected' : ''}>⚡ ${this.escape(title)}</option>`;
+    const curCondId = check.conditionId || (check as any).triggerId;
+    const condOptions = incomingCondIds
+      .map((cid) => {
+        const t = project.getCondition(cid);
+        const title = t ? t.title.replace(/^(🔍 condition: |⚡ trigger: )/, '') : cid;
+        return `<option value="${cid}" ${cid === curCondId ? 'selected' : ''}>🔍 ${this.escape(title)}</option>`;
       })
       .join('');
 
@@ -1363,7 +1368,7 @@ export class NodeInspector {
 
     row.innerHTML = `
       <select class="chk-trig-select inspector-select" style="font-size:10px; padding:2px;">
-        ${trigOptions}
+        ${condOptions}
       </select>
       <select class="chk-op-select inspector-select" style="font-size:10px; padding:2px; font-family:monospace;">
         ${opOptions}
@@ -1380,9 +1385,19 @@ export class NodeInspector {
         const targetEv = d.events.find((x) => x.id === ev.id);
         targetEv?.actionGraph?.nodes?.forEach((n) => {
           if (n.type === 'selector') {
-            n.cases.forEach((c) => c.checks.forEach((chk) => { if (chk === check) chk.triggerId = v; }));
+            n.cases.forEach((c) => c.checks.forEach((chk) => {
+              if (chk === check) {
+                chk.conditionId = v;
+                if ((chk as any).triggerId) (chk as any).triggerId = v;
+              }
+            }));
           } else if (n.type === 'choice') {
-            n.options.forEach((o) => o.checks?.forEach((chk) => { if (chk === check) chk.triggerId = v; }));
+            n.options.forEach((o) => o.checks?.forEach((chk) => {
+              if (chk === check) {
+                chk.conditionId = v;
+                if ((chk as any).triggerId) (chk as any).triggerId = v;
+              }
+            }));
           }
         });
       }, 'field');
@@ -1414,28 +1429,28 @@ export class NodeInspector {
             n.options.forEach((o) => o.checks?.forEach((chk) => { if (chk === check) chk.value = val; }));
           }
         });
-      }, 'field', `chk_val_${check.triggerId}`);
+      }, 'field', `chk_val_${curCondId}`);
     });
     row.querySelector('.btn-del-check')?.addEventListener('click', onDelete);
 
     return row;
   }
 
-  // ------------------------------------------------------------------ Trigger 节点编辑
+  // ------------------------------------------------------------------ Condition 节点编辑
 
-  private renderTriggerInspector(tr: TriggerDef): void {
+  private renderConditionInspector(tr: ConditionDef): void {
     const p = project.get();
     const state = appState.getState();
-    const isSatisfied = evalTrigger(p, state, tr);
-    const controlledEvents = eventsControlledBy(p, tr.id);
+    const isSatisfied = evalCondition(p, state, tr);
+    const dependentEvents = eventsDependingOn(p, tr.id);
 
     // 1. 基础信息卡片
     const metaCard = document.createElement('div');
     metaCard.className = 'inspector-section';
     metaCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span class="event-type-badge" style="background:#312e81; color:#c7d2fe;">TRIGGER 判断器</span>
-        <button id="btnDeleteTrigger" class="btn-node-delete" title="删除此 Trigger 节点 (快捷键: Delete)">
+        <span class="event-type-badge" style="background:#1e1b4b; color:#c7d2fe; border: 1px solid rgba(99,102,241,0.5);">CONDITION 条件节点</span>
+        <button id="btnDeleteTrigger" class="btn-node-delete" title="删除此 Condition 节点 (快捷键: Delete)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1461,22 +1476,24 @@ export class NodeInspector {
 
     this.bindInput(metaCard, '#trTitle', (v) => {
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.title = v;
       }, 'field', `tr_title_${tr.id}`);
     });
     this.bindInput(metaCard, '#trDesc', (v) => {
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.desc = v;
       }, 'field');
     });
 
     const btnDel = metaCard.querySelector('#btnDeleteTrigger') as HTMLElement;
     btnDel.onclick = () => {
-      project.deleteTrigger(tr.id);
+      project.deleteCondition(tr.id);
       appState.select(null);
-      appState.log(`🗑️ 已删除 Trigger 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
+      appState.log(`🗑️ 已删除 Condition 节点：[${tr.title}]（Ctrl+Z 可撤销）`);
     };
 
     // 2. 判断条件列表
@@ -1500,7 +1517,8 @@ export class NodeInspector {
     condCard.querySelector('#trMatch')?.addEventListener('change', (e) => {
       const m = (e.target as HTMLSelectElement).value as 'all' | 'any';
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) targetTr.match = m;
       }, 'field');
     });
@@ -1509,7 +1527,8 @@ export class NodeInspector {
       const first = p.vars[0];
       if (!first) return;
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) {
           targetTr.conds.push({
             var: first.key,
@@ -1526,20 +1545,20 @@ export class NodeInspector {
       cList.appendChild(cEl);
     });
 
-    // 3. 受控 Event 列表
+    // 3. 依赖此 Condition 的 Event 列表
     const controlledCard = document.createElement('div');
     controlledCard.className = 'inspector-section';
     controlledCard.innerHTML = `
       <div class="inspector-label" style="color: #38bdf8;">
-        📤 改变行为的 Event 列表 (${controlledEvents.length} 个)
+        📤 依赖此 Condition 的 Event 列表 (${dependentEvents.length} 个)
       </div>
       <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">
-        顶层大图中，此 Trigger 将以流光箭头指向以下 Event 改变其执行行为：
+        顶层大图中，以下 Event 声明依赖此 Condition 作为前置判断依据：
       </div>
       ${
-        controlledEvents.length === 0
-          ? '<div style="color: #64748b; font-size: 11px;">暂无 Event 分支引用此 Trigger</div>'
-          : controlledEvents
+        dependentEvents.length === 0
+          ? '<div style="color: #64748b; font-size: 11px;">暂无 Event 依赖此 Condition</div>'
+          : dependentEvents
               .map(
                 (ev) => `
             <div style="display: flex; justify-content: space-between; align-items: center; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; font-size: 12px;">
@@ -1561,7 +1580,7 @@ export class NodeInspector {
     });
   }
 
-  private renderCondItem(tr: TriggerDef, c: CmpCond, cIdx: number): HTMLElement {
+  private renderCondItem(tr: ConditionDef, c: CmpCond, cIdx: number): HTMLElement {
     const p = project.get();
     const state = appState.getState();
     const isMet = evalCond(p, state, c);
@@ -1604,7 +1623,8 @@ export class NodeInspector {
     selVar.onchange = () => {
       const v = selVar.value;
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].var = v;
         }
@@ -1615,7 +1635,8 @@ export class NodeInspector {
     selOp.onchange = () => {
       const op = selOp.value as CmpCond['op'];
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].op = op;
         }
@@ -1630,7 +1651,8 @@ export class NodeInspector {
       else if (txt === 'false') val = false;
       else if (!isNaN(Number(txt)) && txt !== '') val = Number(txt);
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr && targetTr.conds[cIdx]) {
           targetTr.conds[cIdx].value = val;
         }
@@ -1639,7 +1661,8 @@ export class NodeInspector {
 
     row.querySelector('.btn-del-cond')?.addEventListener('click', () => {
       project.change((d) => {
-        const targetTr = d.triggers.find((x) => x.id === tr.id);
+        const allConds = d.conditions || (d as any).triggers || [];
+        const targetTr = allConds.find((x: ConditionDef) => x.id === tr.id);
         if (targetTr) {
           targetTr.conds.splice(cIdx, 1);
         }
@@ -1673,7 +1696,7 @@ export class NodeInspector {
         key: ${v.key} · 类型: ${v.kind}
       </div>
       <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;">
-        ${this.escape(v.desc || '该变量由游戏内 Event 执行改变，并在 Trigger 中被读取。')}
+        ${this.escape(v.desc || '该变量由游戏内 Event 执行改变，并在 Condition 条件中被读取。')}
       </div>
 
       <button id="btnOpenFocal" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px; margin-bottom: 12px;">
