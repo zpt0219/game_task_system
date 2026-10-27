@@ -378,6 +378,19 @@ export class GraphCanvas {
           }
         });
         if (cid) {
+          portIn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const cond = project.getCondition(cid);
+            const cTitle = cond ? cond.title.replace(/^🔍 condition: /, '') : cid;
+            this.openEdgeContextMenu(e.clientX, e.clientY, {
+              title: `依赖关系：${cTitle} ➔ ${ev.title}`,
+              onDelete: () => {
+                project.disconnectCondition(ev.id, cid);
+                appState.log(`✂️ 已断开依赖连线：${cTitle} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
+              }
+            });
+          });
           portIn.addEventListener('mouseenter', () => {
             const path = this.svgEdges.querySelector(`path.edge-path[data-from="${cid}"][data-to="${ev.id}"]`) as SVGPathElement | null;
             if (path) path.classList.add('hover-highlight');
@@ -1198,11 +1211,14 @@ export class GraphCanvas {
         d: `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`,
         active: true,
         highlight: !!isHighlight,
-        title: `${item.title}${defaultInfo} (点击断开连线)`,
+        title: `${item.title}${defaultInfo} (右键可删除连线)`,
         onClick: (e) => {
           e.stopPropagation();
+          appState.log(`🔗 选中内部连线：${item.title} (右键可选择删除)`, true);
+        },
+        onDelete: () => {
           item.disconnect();
-          appState.log(`✂️ 已断开连线：${item.title}（Ctrl+Z 可撤销）`, true);
+          appState.log(`✂️ 已删除内部连线：${item.title}（Ctrl+Z 可撤销）`, true);
         }
       });
     });
@@ -2277,11 +2293,14 @@ export class GraphCanvas {
         highlight: !!isSelected,
         fromId: edge.from,
         toId: edge.to,
-        title: `${cond.title} ➔ 依赖此条件：${ev.title} (点击可断开依赖连线)`,
+        title: `${cond.title} ➔ 依赖此条件：${ev.title} (右键可删除连线)`,
         onClick: (e) => {
           e.stopPropagation();
+          appState.log(`🔗 选中依赖连线：${cond.title} ➔ ${ev.title} (右键可选择删除)`, true);
+        },
+        onDelete: () => {
           project.disconnectCondition(edge.to, edge.from);
-          appState.log(`✂️ 已断开依赖连线：${cond.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
+          appState.log(`✂️ 已删除依赖连线：${cond.title} ➔ ${ev.title}（Ctrl+Z 可撤销）`, true);
         }
       });
     });
@@ -2376,6 +2395,7 @@ export class GraphCanvas {
     fromId?: string;
     toId?: string;
     onClick?: (e: MouseEvent) => void;
+    onDelete?: () => void;
   }): void {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', opts.d);
@@ -2392,29 +2412,109 @@ export class GraphCanvas {
     const marker = opts.highlight ? 'arrow-focal' : opts.active ? (opts.effect ? 'arrow-effect' : 'arrow-active') : 'arrow-inactive';
     path.setAttribute('marker-end', `url(#${marker})`);
 
-    if (opts.onClick) {
-      path.style.cursor = 'pointer';
-      path.onclick = opts.onClick;
-    }
-
-    if (opts.fromId && opts.toId) {
-      path.addEventListener('mouseenter', () => {
-        const toEl = document.getElementById(`node-${opts.toId}`);
-        const inPort = toEl?.querySelector(`.port-in[data-cond-id="${opts.fromId}"]`) as HTMLElement | null;
-        if (inPort) inPort.classList.add('snap-port-hover');
-      });
-      path.addEventListener('mouseleave', () => {
-        const toEl = document.getElementById(`node-${opts.toId}`);
-        const inPort = toEl?.querySelector(`.port-in[data-cond-id="${opts.fromId}"]`) as HTMLElement | null;
-        if (inPort) inPort.classList.remove('snap-port-hover');
-      });
-    }
-
     const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     titleEl.textContent = opts.title;
     path.appendChild(titleEl);
 
+    // 宽透明响应区 (Hitbox: 16px 宽)，保证无需像狙击手一样精确点击 2px 细线
+    const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hitPath.setAttribute('d', opts.d);
+    hitPath.setAttribute('class', 'edge-hitbox');
+    hitPath.style.fill = 'none';
+    hitPath.style.stroke = 'transparent';
+    hitPath.style.strokeWidth = '16px';
+    hitPath.style.cursor = 'pointer';
+    hitPath.style.pointerEvents = 'stroke';
+
+    const triggerClick = (e: MouseEvent) => {
+      if (opts.onClick) {
+        opts.onClick(e);
+      }
+    };
+
+    const triggerContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (opts.onDelete) {
+        this.openEdgeContextMenu(e.clientX, e.clientY, {
+          title: opts.title,
+          onDelete: opts.onDelete
+        });
+      }
+    };
+
+    path.addEventListener('click', triggerClick);
+    hitPath.addEventListener('click', triggerClick);
+
+    path.addEventListener('contextmenu', triggerContextMenu);
+    hitPath.addEventListener('contextmenu', triggerContextMenu);
+
+    const onEnter = () => {
+      path.classList.add('hover-highlight');
+      if (opts.fromId && opts.toId) {
+        const toEl = document.getElementById(`node-${opts.toId}`);
+        const inPort = toEl?.querySelector(`.port-in[data-cond-id="${opts.fromId}"]`) as HTMLElement | null;
+        if (inPort) inPort.classList.add('snap-port-hover');
+      }
+    };
+
+    const onLeave = () => {
+      path.classList.remove('hover-highlight');
+      if (opts.fromId && opts.toId) {
+        const toEl = document.getElementById(`node-${opts.toId}`);
+        const inPort = toEl?.querySelector(`.port-in[data-cond-id="${opts.fromId}"]`) as HTMLElement | null;
+        if (inPort) inPort.classList.remove('snap-port-hover');
+      }
+    };
+
+    path.addEventListener('mouseenter', onEnter);
+    path.addEventListener('mouseleave', onLeave);
+    hitPath.addEventListener('mouseenter', onEnter);
+    hitPath.addEventListener('mouseleave', onLeave);
+
     this.svgEdges.appendChild(path);
+    this.svgEdges.appendChild(hitPath);
+  }
+
+  /** 打开连线专用的右键上下文菜单（支持快捷删除连线） */
+  private openEdgeContextMenu(
+    sx: number,
+    sy: number,
+    edgeInfo: {
+      title: string;
+      onDelete: () => void;
+    }
+  ): void {
+    this.closeContextMenu();
+    this.closeDropMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'graph-context-menu edge-context-menu';
+    const clampedX = Math.max(12, Math.min(sx, window.innerWidth - 240));
+    const clampedY = Math.max(12, Math.min(sy, window.innerHeight - 150));
+    menu.style.left = `${clampedX}px`;
+    menu.style.top = `${clampedY}px`;
+
+    menu.innerHTML = `
+      <div class="ctx-header">⚡ 连线操作</div>
+      <div style="padding: 4px 10px; font-size: 11px; color: #94a3b8; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.4;" title="${this.escape(edgeInfo.title)}">
+        ${this.escape(edgeInfo.title)}
+      </div>
+      <div class="ctx-divider"></div>
+      <div class="ctx-item ctx-danger" data-action="delete" style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+        <span>🗑️ 删除此连线</span>
+      </div>
+    `;
+
+    const delBtn = menu.querySelector('[data-action="delete"]') as HTMLElement | null;
+    delBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.closeContextMenu();
+      edgeInfo.onDelete();
+    });
+
+    document.body.appendChild(menu);
+    this.contextMenuEl = menu;
   }
 
   // ------------------------------------------------------------------ 选中高亮

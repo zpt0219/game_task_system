@@ -1570,6 +1570,14 @@ input:checked + .slider:before {
   min-width: 190px;
   animation: fadeIn 0.12s ease-out;
 }
+.ctx-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  padding: 4px 10px 2px;
+  font-weight: 700;
+}
 .ctx-item {
   padding: 8px 12px;
   font-size: 12px;
@@ -1581,6 +1589,13 @@ input:checked + .slider:before {
 .ctx-item:hover {
   background: #2563eb;
   color: #fff;
+}
+.ctx-item.ctx-danger {
+  color: #f87171 !important;
+}
+.ctx-item.ctx-danger:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  color: #fca5a5 !important;
 }
 .ctx-divider {
   height: 1px;
