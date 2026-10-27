@@ -16,6 +16,22 @@ interface LayoutPos {
   y: number;
 }
 
+interface ActiveWireDrag {
+  mode: 'main' | 'subgraph';
+  sourceId: string;
+  caseId?: string;
+  isDefault?: boolean;
+  optId?: string;
+  sourcePortEl: HTMLElement;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  hasDragged: boolean;
+  snappedTargetId: string | null;
+  snappedPortPos: { x: number; y: number } | null;
+}
+
 export class GraphCanvas {
   private viewport: HTMLElement;
   private canvas: HTMLElement;
@@ -65,6 +81,11 @@ export class GraphCanvas {
   private connectingCondId: string | null = null;
   private connectingBannerEl: HTMLElement | null = null;
 
+  // ComfyUI 拖拽飞线与智能磁吸状态
+  private activeWire: ActiveWireDrag | null = null;
+  private rubberbandPath: SVGPathElement | null = null;
+  private dropMenuEl: HTMLElement | null = null;
+
   constructor(private dialog: RpgDialog) {
     this.viewport = document.getElementById('graphViewport') as HTMLElement;
     this.canvas = document.getElementById('graphCanvas') as HTMLElement;
@@ -92,7 +113,10 @@ export class GraphCanvas {
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (this.subConnectingSource) {
+        this.closeDropMenu();
+        if (this.activeWire) {
+          this.cancelActiveWire();
+        } else if (this.subConnectingSource) {
           this.cancelSubConnecting();
         } else if (this.connectingCondId) {
           this.cancelConnecting();
@@ -104,12 +128,28 @@ export class GraphCanvas {
       }
     });
 
-    this.viewport.addEventListener('click', () => {
+    this.viewport.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.wire-drop-menu')) return;
+      this.closeDropMenu();
+      if (this.activeWire && !this.activeWire.hasDragged) {
+        this.cancelActiveWire();
+      }
       if (this.connectingCondId) {
         this.cancelConnecting();
       }
       if (this.subConnectingSource) {
         this.cancelSubConnecting();
+      }
+    });
+
+    // 悬浮点选连线模式下的实时光标跟踪与磁吸
+    window.addEventListener('pointermove', (e) => {
+      if (this.activeWire && !this.activeWire.hasDragged) {
+        const cPos = this.clientToCanvasPos(e.clientX, e.clientY);
+        this.activeWire.currentX = cPos.x;
+        this.activeWire.currentY = cPos.y;
+        this.checkMagnetSnapping(e.clientX, e.clientY, cPos);
+        this.updateRubberbandWire();
       }
     });
 
@@ -139,6 +179,8 @@ export class GraphCanvas {
   // ------------------------------------------------------------------ 视图模式切换
 
   public showMainGraph(): void {
+    this.closeDropMenu();
+    this.cancelActiveWire();
     this.viewMode = 'main';
     this.focalVarKey = null;
     this.subGraphEventId = null;
@@ -151,6 +193,8 @@ export class GraphCanvas {
   public showFocalGraph(varKey: string): void {
     const v = project.getVar(varKey);
     if (!v) return;
+    this.closeDropMenu();
+    this.cancelActiveWire();
     this.viewMode = 'focal';
     this.focalVarKey = varKey;
     this.subGraphEventId = null;
@@ -165,6 +209,8 @@ export class GraphCanvas {
   public showSubGraph(eventId: string): void {
     const ev = project.getEvent(eventId);
     if (!ev) return;
+    this.closeDropMenu();
+    this.cancelActiveWire();
     project.ensureActionGraph(ev);
     this.viewMode = 'subgraph';
     this.subGraphEventId = eventId;
@@ -255,11 +301,14 @@ export class GraphCanvas {
       el.innerHTML = `
         <div class="cond-status-led"></div>
         <div class="node-title">${this.escape(cond.title)}</div>
-        <div class="node-port port-out" data-tid="${cond.id}" title="点击此端点，再点击 Event 可建立依赖连线 (声明 Event 依赖该条件)"></div>
+        <div class="node-port port-out" data-tid="${cond.id}" title="【按住拖拽连线】鼠标按住拖至 Event 节点建立依赖连线，松开即可完成"></div>
       `;
-      el.querySelector('.port-out')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.startConnecting(cond.id);
+      const portOut = el.querySelector('.port-out') as HTMLElement | null;
+      portOut?.addEventListener('pointerdown', (e) => {
+        this.handlePortPointerDown(e, portOut, {
+          mode: 'main',
+          sourceId: cond.id
+        });
       });
       this.attachNodeInteraction(el, 'condition', cond.id);
       this.nodesContainer.appendChild(el);
@@ -275,14 +324,24 @@ export class GraphCanvas {
       el.style.left = `${ev.x}px`;
       el.style.top = `${ev.y}px`;
       el.innerHTML = `
-        <div class="node-port port-in" data-eid="${ev.id}" title="Condition 依赖端点 (从 Condition 连出接入此处，声明此 Event 依赖该条件)"></div>
+        <div class="node-port port-in" data-eid="${ev.id}" title="【依赖输入端】按住可拔出既有依赖连线，亦可接入新 Condition"></div>
         <div class="event-status-dot status-dot"></div>
         <div class="node-title">${this.escape(ev.title)}</div>
         <span class="event-status-pill status-pill"></span>
       `;
-      el.querySelector('.port-in')?.addEventListener('click', (e) => {
+      const portIn = el.querySelector('.port-in') as HTMLElement | null;
+      portIn?.addEventListener('pointerdown', (e) => {
+        this.handlePortInPointerDown(e, portIn, {
+          mode: 'main',
+          targetId: ev.id
+        });
+      });
+      portIn?.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (this.connectingCondId) {
+        if (this.activeWire && this.activeWire.mode === 'main') {
+          this.completeWireConnection(ev.id);
+          this.cancelActiveWire();
+        } else if (this.connectingCondId) {
           this.completeConnecting(ev.id);
         }
       });
@@ -398,11 +457,14 @@ export class GraphCanvas {
             <div class="sub-node-header">
               <span>▶ Start</span>
             </div>
-            <div class="node-port port-out" data-nid="${node.id}" title="连接至下一节点 (点击端点建立连线)"></div>
+            <div class="node-port port-out" data-nid="${node.id}" title="【按住拖拽连线】鼠标按住拖至下一节点 In 端点建立连线"></div>
           `;
-          el.querySelector('.port-out')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.startSubConnecting(node.id);
+          const portOut = el.querySelector('.port-out') as HTMLElement | null;
+          portOut?.addEventListener('pointerdown', (e) => {
+            this.handlePortPointerDown(e, portOut, {
+              mode: 'subgraph',
+              sourceId: node.id
+            });
           });
           break;
         }
@@ -422,22 +484,37 @@ export class GraphCanvas {
             .join('');
 
           el.innerHTML = `
-            <div class="node-port port-in" data-nid="${node.id}" title="输入端点 (支持多线汇入或循环回跳)"></div>
+            <div class="node-port port-in" data-nid="${node.id}" title="【输入端点】按住可拔出既有连线改接，亦可吸附新连线"></div>
             <div class="sub-node-header">
               <span>${this.escape(node.title || '🎬 Action')}</span>
-              <div class="node-port port-out" data-nid="${node.id}" title="输出端点 (点击建立连线)"></div>
+              <div class="node-port port-out" data-nid="${node.id}" title="【输出端点】按住拖出连线"></div>
             </div>
             <div class="action-steps-preview">
               ${stepsHtml || '<div class="step-preview-item" style="color:#64748b;">(暂无执行步骤)</div>'}
             </div>
           `;
-          el.querySelector('.port-in')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+          const portIn = el.querySelector('.port-in') as HTMLElement | null;
+          portIn?.addEventListener('pointerdown', (e) => {
+            this.handlePortInPointerDown(e, portIn, {
+              mode: 'subgraph',
+              targetId: node.id
+            });
           });
-          el.querySelector('.port-out')?.addEventListener('click', (e) => {
+          portIn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.startSubConnecting(node.id);
+            if (this.activeWire && this.activeWire.mode === 'subgraph') {
+              this.completeWireConnection(node.id);
+              this.cancelActiveWire();
+            } else if (this.subConnectingSource) {
+              this.completeSubConnecting(node.id);
+            }
+          });
+          const portOut = el.querySelector('.port-out') as HTMLElement | null;
+          portOut?.addEventListener('pointerdown', (e) => {
+            this.handlePortPointerDown(e, portOut, {
+              mode: 'subgraph',
+              sourceId: node.id
+            });
           });
           break;
         }
@@ -463,14 +540,14 @@ export class GraphCanvas {
                   <span style="font-weight:600; color:#e2e8f0;">${this.escape(c.title)}</span>
                   <span style="color:#94a3b8; font-size:10px; margin-left:4px; font-family:monospace;">[${this.escape(checkDesc)}]</span>
                 </div>
-                <div class="node-port port-out" data-nid="${node.id}" data-caseid="${c.id}" title="分支 [${this.escape(c.title)}] 输出端点"></div>
+                <div class="node-port port-out" data-nid="${node.id}" data-caseid="${c.id}" title="分支 [${this.escape(c.title)}] 输出端点 (按住拖拽连线)"></div>
               </div>
             `;
             })
             .join('');
 
           el.innerHTML = `
-            <div class="node-port port-in" data-nid="${node.id}" title="输入端点"></div>
+            <div class="node-port port-in" data-nid="${node.id}" title="【输入端点】按住可拔出既有连线改接，亦可吸附新连线"></div>
             <div class="sub-node-header">
               <span>${this.escape(node.title || '🔀 Selector')}</span>
             </div>
@@ -478,20 +555,37 @@ export class GraphCanvas {
               ${casesHtml}
               <div class="sub-node-row default-row">
                 <span>Default (保底默认)</span>
-                <div class="node-port port-out" data-nid="${node.id}" data-default="true" title="Default 保底输出端点"></div>
+                <div class="node-port port-out" data-nid="${node.id}" data-default="true" title="Default 保底输出端点 (按住拖拽连线)"></div>
               </div>
             </div>
           `;
-          el.querySelector('.port-in')?.addEventListener('click', (e) => {
+          const portIn = el.querySelector('.port-in') as HTMLElement | null;
+          portIn?.addEventListener('pointerdown', (e) => {
+            this.handlePortInPointerDown(e, portIn, {
+              mode: 'subgraph',
+              targetId: node.id
+            });
+          });
+          portIn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+            if (this.activeWire && this.activeWire.mode === 'subgraph') {
+              this.completeWireConnection(node.id);
+              this.cancelActiveWire();
+            } else if (this.subConnectingSource) {
+              this.completeSubConnecting(node.id);
+            }
           });
           el.querySelectorAll('.port-out').forEach((p) => {
-            p.addEventListener('click', (e) => {
-              e.stopPropagation();
-              const caseId = (p as HTMLElement).dataset.caseid;
-              const isDefault = (p as HTMLElement).dataset.default === 'true';
-              this.startSubConnecting(node.id, caseId, isDefault);
+            const portEl = p as HTMLElement;
+            portEl.addEventListener('pointerdown', (e) => {
+              const caseId = portEl.dataset.caseid;
+              const isDefault = portEl.dataset.default === 'true';
+              this.handlePortPointerDown(e, portEl, {
+                mode: 'subgraph',
+                sourceId: node.id,
+                caseId,
+                isDefault
+              });
             });
           });
           break;
@@ -525,14 +619,14 @@ export class GraphCanvas {
                       : ''
                   }
                 </div>
-                <div class="node-port port-out" data-nid="${node.id}" data-optid="${o.id}" title="选项 [${this.escape(o.text)}] 输出端点"></div>
+                <div class="node-port port-out" data-nid="${node.id}" data-optid="${o.id}" title="选项 [${this.escape(o.text)}] 输出端点 (按住拖拽连线)"></div>
               </div>
             `;
             })
             .join('');
 
           el.innerHTML = `
-            <div class="node-port port-in" data-nid="${node.id}" title="输入端点"></div>
+            <div class="node-port port-in" data-nid="${node.id}" title="【输入端点】按住可拔出既有连线改接，亦可吸附新连线"></div>
             <div class="sub-node-header">
               <span>💬 ${this.escape(node.speaker || 'NPC')}: ${this.escape(node.title || 'Choice')}</span>
             </div>
@@ -541,15 +635,31 @@ export class GraphCanvas {
               ${optionsHtml}
             </div>
           `;
-          el.querySelector('.port-in')?.addEventListener('click', (e) => {
+          const portIn = el.querySelector('.port-in') as HTMLElement | null;
+          portIn?.addEventListener('pointerdown', (e) => {
+            this.handlePortInPointerDown(e, portIn, {
+              mode: 'subgraph',
+              targetId: node.id
+            });
+          });
+          portIn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.subConnectingSource) this.completeSubConnecting(node.id);
+            if (this.activeWire && this.activeWire.mode === 'subgraph') {
+              this.completeWireConnection(node.id);
+              this.cancelActiveWire();
+            } else if (this.subConnectingSource) {
+              this.completeSubConnecting(node.id);
+            }
           });
           el.querySelectorAll('.port-out').forEach((p) => {
-            p.addEventListener('click', (e) => {
-              e.stopPropagation();
-              const optId = (p as HTMLElement).dataset.optid;
-              this.startSubConnecting(node.id, undefined, undefined, optId);
+            const portEl = p as HTMLElement;
+            portEl.addEventListener('pointerdown', (e) => {
+              const optId = portEl.dataset.optid;
+              this.handlePortPointerDown(e, portEl, {
+                mode: 'subgraph',
+                sourceId: node.id,
+                optId
+              });
             });
           });
           break;
@@ -569,7 +679,7 @@ export class GraphCanvas {
 
     el.onmousedown = (e) => {
       if (e.button !== 0) return;
-      if ((e.target as HTMLElement).classList.contains('node-port')) return;
+      if ((e.target as HTMLElement).closest('.node-port')) return;
       e.stopPropagation();
       hasMoved = false;
       this.draggingNodeId = node.id;
@@ -621,6 +731,12 @@ export class GraphCanvas {
     el.onclick = (e) => {
       e.stopPropagation();
       if (hasMoved) return;
+
+      if (this.activeWire && this.activeWire.mode === 'subgraph' && node.type !== 'start') {
+        this.completeWireConnection(node.id);
+        this.cancelActiveWire();
+        return;
+      }
 
       if (this.subConnectingSource) {
         this.completeSubConnecting(node.id);
@@ -985,6 +1101,7 @@ export class GraphCanvas {
 
     el.onmousedown = (e) => {
       if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('.node-port')) return;
       e.stopPropagation();
       hasMoved = false;
       this.draggingNodeId = id;
@@ -1044,6 +1161,12 @@ export class GraphCanvas {
       e.stopPropagation();
       if (hasMoved) return;
 
+      if (this.activeWire && this.activeWire.mode === 'main' && kind === 'event') {
+        this.completeWireConnection(id);
+        this.cancelActiveWire();
+        return;
+      }
+
       if (this.connectingCondId && kind === 'event') {
         this.completeConnecting(id);
         return;
@@ -1084,6 +1207,466 @@ export class GraphCanvas {
       },
       ev
     );
+  }
+
+  // ==========================================================================
+  // ComfyUI 风格连线系统 (拖拽飞线、智能磁吸、释放菜单、拔线改接)
+  // ==========================================================================
+
+  private ensureRubberbandElement(): SVGPathElement {
+    if (!this.rubberbandPath || !this.rubberbandPath.parentNode) {
+      const existing = this.svgEdges.querySelector('#rubberband-wire') as SVGPathElement | null;
+      if (existing) {
+        this.rubberbandPath = existing;
+      } else {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.id = 'rubberband-wire';
+        path.setAttribute('class', 'wire-rubberband');
+        path.setAttribute('marker-end', 'url(#arrow-focal)');
+        this.svgEdges.appendChild(path);
+        this.rubberbandPath = path;
+      }
+    }
+    return this.rubberbandPath;
+  }
+
+  private updateRubberbandWire(): void {
+    if (!this.activeWire) return;
+    const path = this.ensureRubberbandElement();
+
+    const x1 = this.activeWire.startX;
+    const y1 = this.activeWire.startY;
+    let x2 = this.activeWire.currentX;
+    let y2 = this.activeWire.currentY;
+
+    if (this.activeWire.snappedPortPos) {
+      x2 = this.activeWire.snappedPortPos.x;
+      y2 = this.activeWire.snappedPortPos.y;
+      path.classList.add('snapped');
+      path.setAttribute('marker-end', 'url(#arrow-active)');
+    } else {
+      path.classList.remove('snapped');
+      path.setAttribute('marker-end', 'url(#arrow-focal)');
+    }
+
+    let cx1: number, cy1: number, cx2: number, cy2: number;
+    if (x2 >= x1) {
+      const dx = Math.max(Math.abs(x2 - x1) * 0.5, 40);
+      cx1 = x1 + dx;
+      cy1 = y1;
+      cx2 = x2 - dx;
+      cy2 = y2;
+    } else {
+      const dx = Math.max(Math.abs(x2 - x1) * 0.35, 60);
+      cx1 = x1 + dx;
+      cy1 = y1;
+      cx2 = x2 - dx;
+      cy2 = y2;
+    }
+
+    path.setAttribute('d', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
+    path.style.display = 'block';
+  }
+
+  private checkMagnetSnapping(clientX: number, clientY: number, canvasPos: { x: number; y: number }): void {
+    if (!this.activeWire) return;
+
+    // 清除上一次的高亮
+    document.querySelectorAll('.snap-target-hover').forEach((el) => el.classList.remove('snap-target-hover'));
+    document.querySelectorAll('.snap-port-hover').forEach((el) => el.classList.remove('snap-port-hover'));
+
+    this.activeWire.snappedTargetId = null;
+    this.activeWire.snappedPortPos = null;
+
+    if (this.activeWire.mode === 'main') {
+      const p = project.get();
+      for (const ev of p.events) {
+        const el = document.getElementById(`node-${ev.id}`);
+        if (!el) continue;
+        const portIn = el.querySelector('.port-in') as HTMLElement | null;
+        if (!portIn) continue;
+
+        const portCanvasPos = this.getPortCanvasPos(portIn);
+        const dist = Math.hypot(canvasPos.x - portCanvasPos.x, canvasPos.y - portCanvasPos.y);
+        const rect = el.getBoundingClientRect();
+        const isInside =
+          clientX >= rect.left - 20 &&
+          clientX <= rect.right + 20 &&
+          clientY >= rect.top - 15 &&
+          clientY <= rect.bottom + 15;
+
+        if (dist < 45 || isInside) {
+          this.activeWire.snappedTargetId = ev.id;
+          this.activeWire.snappedPortPos = portCanvasPos;
+          el.classList.add('snap-target-hover');
+          portIn.classList.add('snap-port-hover');
+          break;
+        }
+      }
+    } else if (this.activeWire.mode === 'subgraph' && this.subGraphEventId) {
+      const ev = project.getEvent(this.subGraphEventId);
+      if (!ev || !ev.actionGraph) return;
+
+      for (const node of ev.actionGraph.nodes) {
+        if (node.id === this.activeWire.sourceId || node.type === 'start') continue;
+        const el = document.getElementById(`subnode-${node.id}`);
+        if (!el) continue;
+        const portIn = el.querySelector('.port-in') as HTMLElement | null;
+        if (!portIn) continue;
+
+        const portCanvasPos = this.getPortCanvasPos(portIn);
+        const dist = Math.hypot(canvasPos.x - portCanvasPos.x, canvasPos.y - portCanvasPos.y);
+        const rect = el.getBoundingClientRect();
+        const isInside =
+          clientX >= rect.left - 15 &&
+          clientX <= rect.right + 15 &&
+          clientY >= rect.top - 10 &&
+          clientY <= rect.bottom + 10;
+
+        if (dist < 40 || isInside) {
+          this.activeWire.snappedTargetId = node.id;
+          this.activeWire.snappedPortPos = portCanvasPos;
+          el.classList.add('snap-target-hover');
+          portIn.classList.add('snap-port-hover');
+          break;
+        }
+      }
+    }
+  }
+
+  private handlePortPointerDown(
+    e: PointerEvent,
+    portEl: HTMLElement,
+    config: {
+      mode: 'main' | 'subgraph';
+      sourceId: string;
+      caseId?: string;
+      isDefault?: boolean;
+      optId?: string;
+    }
+  ): void {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    this.closeDropMenu();
+    this.cancelActiveWire();
+
+    const startPos = this.getPortCanvasPos(portEl);
+    this.activeWire = {
+      mode: config.mode,
+      sourceId: config.sourceId,
+      caseId: config.caseId,
+      isDefault: config.isDefault,
+      optId: config.optId,
+      sourcePortEl: portEl,
+      startX: startPos.x,
+      startY: startPos.y,
+      currentX: startPos.x,
+      currentY: startPos.y,
+      hasDragged: false,
+      snappedTargetId: null,
+      snappedPortPos: null
+    };
+
+    portEl.classList.add('port-active');
+    this.ensureRubberbandElement();
+    this.updateRubberbandWire();
+
+    if (config.mode === 'main') {
+      this.connectingCondId = config.sourceId;
+    } else {
+      this.subConnectingSource = {
+        nodeId: config.sourceId,
+        caseId: config.caseId,
+        isDefault: config.isDefault,
+        optId: config.optId
+      };
+    }
+
+    const onPointerMove = (moveEv: PointerEvent) => {
+      if (!this.activeWire) return;
+      const cPos = this.clientToCanvasPos(moveEv.clientX, moveEv.clientY);
+      this.activeWire.currentX = cPos.x;
+      this.activeWire.currentY = cPos.y;
+
+      const dist = Math.hypot(cPos.x - this.activeWire.startX, cPos.y - this.activeWire.startY);
+      if (dist > 4) {
+        this.activeWire.hasDragged = true;
+      }
+
+      this.checkMagnetSnapping(moveEv.clientX, moveEv.clientY, cPos);
+      this.updateRubberbandWire();
+    };
+
+    const onPointerUp = (upEv: PointerEvent) => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      if (!this.activeWire) return;
+      const wire = this.activeWire;
+
+      if (wire.hasDragged) {
+        if (wire.snappedTargetId) {
+          this.completeWireConnection(wire.snappedTargetId);
+          this.cancelActiveWire();
+        } else {
+          const dropCanvasPos = this.clientToCanvasPos(upEv.clientX, upEv.clientY);
+          const distFromStart = Math.hypot(dropCanvasPos.x - wire.startX, dropCanvasPos.y - wire.startY);
+          if (distFromStart > 28) {
+            this.openDropOnEmptyMenu(upEv.clientX, upEv.clientY, dropCanvasPos, wire);
+          } else {
+            this.cancelActiveWire();
+          }
+        }
+      } else {
+        // 单击模式保留悬停飞线与操作横幅
+        this.showClickConnectBanner(wire);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }
+
+  private handlePortInPointerDown(
+    e: PointerEvent,
+    _portInEl: HTMLElement,
+    config: {
+      mode: 'main' | 'subgraph';
+      targetId: string;
+    }
+  ): void {
+    if (e.button !== 0) return;
+
+    if (config.mode === 'main') {
+      const p = project.get();
+      const ev = p.events.find((x) => x.id === config.targetId);
+      if (ev && ev.incomingConditions && ev.incomingConditions.length > 0) {
+        e.stopPropagation();
+        e.preventDefault();
+        const condId = ev.incomingConditions[ev.incomingConditions.length - 1];
+        project.disconnectCondition(ev.id, condId);
+        appState.log(`🔌 已拔出 Condition 依赖连线：[${condId}]，可重新拖动改接至其他 Event`, true);
+
+        const condEl = document.getElementById(`node-${condId}`);
+        const condPortOut = condEl?.querySelector('.port-out') as HTMLElement | null;
+        if (condPortOut) {
+          this.handlePortPointerDown(e, condPortOut, {
+            mode: 'main',
+            sourceId: condId
+          });
+        }
+      }
+    } else if (config.mode === 'subgraph' && this.subGraphEventId) {
+      const ev = project.getEvent(this.subGraphEventId);
+      if (!ev || !ev.actionGraph) return;
+
+      let upstream: {
+        nodeId: string;
+        caseId?: string;
+        isDefault?: boolean;
+        optId?: string;
+        portEl: HTMLElement | null;
+      } | null = null;
+
+      for (const n of ev.actionGraph.nodes) {
+        if (n.type === 'start' && n.nextId === config.targetId) {
+          const fromEl = document.getElementById(`subnode-${n.id}`);
+          const portEl = fromEl?.querySelector('.port-out') as HTMLElement | null;
+          upstream = { nodeId: n.id, portEl };
+          break;
+        }
+        if (n.type === 'action' && n.nextId === config.targetId) {
+          const fromEl = document.getElementById(`subnode-${n.id}`);
+          const portEl = fromEl?.querySelector('.sub-node-header .port-out') as HTMLElement | null;
+          upstream = { nodeId: n.id, portEl };
+          break;
+        }
+        if (n.type === 'selector') {
+          if (n.defaultTargetId === config.targetId) {
+            const fromEl = document.getElementById(`subnode-${n.id}`);
+            const portEl = fromEl?.querySelector('.port-out[data-default="true"]') as HTMLElement | null;
+            upstream = { nodeId: n.id, isDefault: true, portEl };
+            break;
+          }
+          const matchedCase = n.cases.find((c) => c.targetId === config.targetId);
+          if (matchedCase) {
+            const fromEl = document.getElementById(`subnode-${n.id}`);
+            const portEl = fromEl?.querySelector(`.port-out[data-caseid="${matchedCase.id}"]`) as HTMLElement | null;
+            upstream = { nodeId: n.id, caseId: matchedCase.id, portEl };
+            break;
+          }
+        }
+        if (n.type === 'choice') {
+          const matchedOpt = n.options.find((o) => o.targetId === config.targetId);
+          if (matchedOpt) {
+            const fromEl = document.getElementById(`subnode-${n.id}`);
+            const portEl = fromEl?.querySelector(`.port-out[data-optid="${matchedOpt.id}"]`) as HTMLElement | null;
+            upstream = { nodeId: n.id, optId: matchedOpt.id, portEl };
+            break;
+          }
+        }
+      }
+
+      if (upstream && upstream.portEl) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        project.change((d) => {
+          const targetEv = d.events.find((x) => x.id === this.subGraphEventId);
+          const graph = targetEv?.actionGraph;
+          if (!graph) return;
+          const srcNode = graph.nodes.find((n) => n.id === upstream!.nodeId);
+          if (!srcNode) return;
+          if (srcNode.type === 'start' || srcNode.type === 'action') {
+            delete srcNode.nextId;
+            delete srcNode.defaultOptionIndex;
+          } else if (srcNode.type === 'selector') {
+            if (upstream!.isDefault) {
+              delete srcNode.defaultTargetId;
+              delete srcNode.defaultOptionIndex;
+            } else if (upstream!.caseId) {
+              const c = srcNode.cases.find((x) => x.id === upstream!.caseId);
+              if (c) {
+                delete c.targetId;
+                delete c.defaultOptionIndex;
+              }
+            }
+          } else if (srcNode.type === 'choice' && upstream!.optId) {
+            const o = srcNode.options.find((x) => x.id === upstream!.optId);
+            if (o) {
+              delete o.targetId;
+              delete o.defaultOptionIndex;
+            }
+          }
+        }, 'structure');
+
+        appState.log(`🔌 已拔出连线：[${upstream.nodeId}] ➔ [${config.targetId}]，可拖动改接至新目标`, true);
+
+        this.handlePortPointerDown(e, upstream.portEl, {
+          mode: 'subgraph',
+          sourceId: upstream.nodeId,
+          caseId: upstream.caseId,
+          isDefault: upstream.isDefault,
+          optId: upstream.optId
+        });
+      }
+    }
+  }
+
+  private completeWireConnection(targetId: string): void {
+    if (!this.activeWire) return;
+    const mode = this.activeWire.mode;
+    if (mode === 'main') {
+      this.completeConnecting(targetId);
+    } else {
+      this.completeSubConnecting(targetId);
+    }
+    this.pulseNode(targetId);
+  }
+
+  private openDropOnEmptyMenu(
+    clientX: number,
+    clientY: number,
+    canvasPos: { x: number; y: number },
+    wire: ActiveWireDrag
+  ): void {
+    this.closeDropMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'wire-drop-menu';
+    menu.style.left = `${clientX + 6}px`;
+    menu.style.top = `${clientY + 6}px`;
+
+    if (wire.mode === 'main') {
+      const cond = project.getCondition(wire.sourceId);
+      const condTitle = cond ? cond.title.replace(/^🔍 condition: /, '') : wire.sourceId;
+      menu.innerHTML = `
+        <div class="wire-drop-header">
+          <span>⚡ 从 [${this.escape(condTitle)}] 连出</span>
+        </div>
+        <div class="wire-drop-item" data-action="new-event">
+          <span>💬 新建 Event 节点并建立依赖</span>
+        </div>
+      `;
+    } else {
+      menu.innerHTML = `
+        <div class="wire-drop-header">
+          <span>⚡ 连接至新 Action Tree 节点</span>
+        </div>
+        <div class="wire-drop-item" data-action="new-action">
+          <span>🎬 新建 Action 复合动作并连入</span>
+        </div>
+        <div class="wire-drop-item" data-action="new-selector">
+          <span>🔀 新建 Selector 条件分支并连入</span>
+        </div>
+        <div class="wire-drop-item" data-action="new-choice">
+          <span>💬 新建 Choice 玩家选项并连入</span>
+        </div>
+      `;
+    }
+
+    menu.querySelectorAll('.wire-drop-item').forEach((item) => {
+      (item as HTMLElement).onclick = (e) => {
+        e.stopPropagation();
+        const action = (item as HTMLElement).dataset.action;
+        this.closeDropMenu();
+
+        if (action === 'new-event') {
+          const newEv = project.addEvent(canvasPos.x, canvasPos.y);
+          this.completeConnecting(newEv.id);
+          appState.select({ kind: 'event', id: newEv.id });
+          this.pulseNode(newEv.id);
+          this.cancelActiveWire();
+        } else if (action === 'new-action' || action === 'new-selector' || action === 'new-choice') {
+          const subType = action === 'new-action' ? 'action' : action === 'new-selector' ? 'selector' : 'choice';
+          const newId = this.createSubNodeAt(subType, canvasPos.x, canvasPos.y);
+          if (newId) {
+            this.completeSubConnecting(newId);
+            this.pulseNode(newId);
+          }
+          this.cancelActiveWire();
+        }
+      };
+    });
+
+    document.body.appendChild(menu);
+    this.dropMenuEl = menu;
+  }
+
+  private closeDropMenu(): void {
+    if (this.dropMenuEl) {
+      this.dropMenuEl.remove();
+      this.dropMenuEl = null;
+    }
+  }
+
+  private cancelActiveWire(): void {
+    if (this.activeWire) {
+      if (this.activeWire.sourcePortEl) {
+        this.activeWire.sourcePortEl.classList.remove('port-active');
+      }
+      this.activeWire = null;
+    }
+    if (this.rubberbandPath) {
+      this.rubberbandPath.style.display = 'none';
+      this.rubberbandPath.classList.remove('snapped');
+    }
+    document.querySelectorAll('.snap-target-hover').forEach((el) => el.classList.remove('snap-target-hover'));
+    document.querySelectorAll('.snap-port-hover').forEach((el) => el.classList.remove('snap-port-hover'));
+    this.cancelConnecting();
+    this.cancelSubConnecting();
+  }
+
+  private showClickConnectBanner(wire: ActiveWireDrag): void {
+    if (wire.mode === 'main') {
+      this.startConnecting(wire.sourceId);
+    } else {
+      this.startSubConnecting(wire.sourceId, wire.caseId, wire.isDefault, wire.optId);
+    }
   }
 
   // ------------------------------------------------------------------ 连线交互
@@ -1224,6 +1807,11 @@ export class GraphCanvas {
       this.renderFocalEdges(p, state, sel);
     } else {
       this.renderMainEdges(p, state, sel);
+    }
+
+    if (this.activeWire) {
+      this.ensureRubberbandElement();
+      this.updateRubberbandWire();
     }
   }
 
@@ -1864,6 +2452,9 @@ export class GraphCanvas {
 
   private bindViewportEvents(): void {
     this.viewport.onmousedown = (e) => {
+      if ((e.target as HTMLElement).closest('.node-port')) return;
+      if ((e.target as HTMLElement).closest('.wire-drop-menu')) return;
+      if (this.activeWire) return;
       // 允许左键空白区或中键平移
       if (e.button !== 0 && e.button !== 1) return;
       this.isPanning = true;
@@ -1871,6 +2462,7 @@ export class GraphCanvas {
       this.startPanX = e.clientX - this.panX;
       this.startPanY = e.clientY - this.panY;
       this.closeContextMenu();
+      this.closeDropMenu();
     };
 
     window.addEventListener('mousemove', (e) => {

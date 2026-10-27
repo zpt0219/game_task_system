@@ -1652,6 +1652,111 @@ input:checked + .slider:before {
 }
 
 /* ==========================================================================
+   ComfyUI 风格动态橡皮筋飞线与磁吸反馈 (Rubberband Wire & Snapping)
+   ========================================================================== */
+.wire-rubberband {
+  fill: none;
+  stroke: #38bdf8;
+  stroke-width: 2.8;
+  stroke-dasharray: 7 4;
+  animation: rubberbandFlow 0.8s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.75));
+  pointer-events: none;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+@keyframes rubberbandFlow {
+  from {
+    stroke-dashoffset: 22;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.wire-rubberband.snapped {
+  stroke: #10b981 !important;
+  stroke-width: 3.5 !important;
+  stroke-dasharray: none !important;
+  animation: none !important;
+  filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.95)) !important;
+}
+
+/* 磁吸靠近目标节点时的发光与放大反馈 */
+.snap-target-hover {
+  outline: 2.5px solid #10b981 !important;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.65) !important;
+  transform: scale(1.025);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, outline 0.12s ease;
+}
+
+.snap-port-hover {
+  transform: translateY(-50%) scale(1.65) !important;
+  background: #10b981 !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 1) !important;
+}
+
+/* 空白处松手快速创建菜单 (Release-on-empty Quick Menu) */
+.wire-drop-menu {
+  position: absolute;
+  z-index: 250;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 20px rgba(56, 189, 248, 0.3);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: dropMenuPop 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--font-sans);
+}
+
+@keyframes dropMenuPop {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.wire-drop-header {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 4px 8px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wire-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #f1f5f9;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.wire-drop-item:hover {
+  background: rgba(56, 189, 248, 0.22);
+  color: #38bdf8;
+  transform: translateX(2px);
+}
+
+/* ==========================================================================
    拖拽生成节点 (Drag & Drop Creation from Header)
    ========================================================================== */
 
