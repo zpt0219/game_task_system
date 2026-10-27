@@ -85,6 +85,7 @@ export class GraphCanvas {
   private activeWire: ActiveWireDrag | null = null;
   private rubberbandPath: SVGPathElement | null = null;
   private dropMenuEl: HTMLElement | null = null;
+  private suppressNextViewportClick = false;
 
   constructor(private dialog: RpgDialog) {
     this.viewport = document.getElementById('graphViewport') as HTMLElement;
@@ -128,9 +129,19 @@ export class GraphCanvas {
       }
     });
 
-    this.viewport.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.wire-drop-menu')) return;
-      this.closeDropMenu();
+    window.addEventListener('click', (e) => {
+      if (this.suppressNextViewportClick) {
+        this.suppressNextViewportClick = false;
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.wire-drop-menu')) return;
+      if (target?.closest('.node-port')) return;
+      if (this.dropMenuEl) {
+        this.closeDropMenu();
+        this.cancelActiveWire();
+        return;
+      }
       if (this.activeWire && !this.activeWire.hasDragged) {
         this.cancelActiveWire();
       }
@@ -144,7 +155,7 @@ export class GraphCanvas {
 
     // 悬浮点选连线模式下的实时光标跟踪与磁吸
     window.addEventListener('pointermove', (e) => {
-      if (this.activeWire && !this.activeWire.hasDragged) {
+      if (this.activeWire && !this.activeWire.hasDragged && !this.dropMenuEl) {
         const cPos = this.clientToCanvasPos(e.clientX, e.clientY);
         this.activeWire.currentX = cPos.x;
         this.activeWire.currentY = cPos.y;
@@ -310,6 +321,7 @@ export class GraphCanvas {
           sourceId: cond.id
         });
       });
+      portOut?.addEventListener('click', (e) => e.stopPropagation());
       this.attachNodeInteraction(el, 'condition', cond.id);
       this.nodesContainer.appendChild(el);
     });
@@ -466,6 +478,7 @@ export class GraphCanvas {
               sourceId: node.id
             });
           });
+          portOut?.addEventListener('click', (e) => e.stopPropagation());
           break;
         }
 
@@ -516,6 +529,7 @@ export class GraphCanvas {
               sourceId: node.id
             });
           });
+          portOut?.addEventListener('click', (e) => e.stopPropagation());
           break;
         }
 
@@ -587,6 +601,7 @@ export class GraphCanvas {
                 isDefault
               });
             });
+            portEl.addEventListener('click', (e) => e.stopPropagation());
           });
           break;
         }
@@ -661,6 +676,7 @@ export class GraphCanvas {
                 optId
               });
             });
+            portEl.addEventListener('click', (e) => e.stopPropagation());
           });
           break;
         }
@@ -732,13 +748,18 @@ export class GraphCanvas {
       e.stopPropagation();
       if (hasMoved) return;
 
-      if (this.activeWire && this.activeWire.mode === 'subgraph' && node.type !== 'start') {
+      if (
+        this.activeWire &&
+        this.activeWire.mode === 'subgraph' &&
+        node.type !== 'start' &&
+        node.id !== this.activeWire.sourceId
+      ) {
         this.completeWireConnection(node.id);
         this.cancelActiveWire();
         return;
       }
 
-      if (this.subConnectingSource) {
+      if (this.subConnectingSource && node.type !== 'start' && node.id !== this.subConnectingSource.nodeId) {
         this.completeSubConnecting(node.id);
         return;
       }
@@ -779,7 +800,7 @@ export class GraphCanvas {
     this.connectingBannerEl.style.display = 'flex';
     this.connectingBannerEl.querySelector('#btnCancelConnect')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.cancelSubConnecting();
+      this.cancelActiveWire();
     });
   }
 
@@ -1278,6 +1299,14 @@ export class GraphCanvas {
     this.activeWire.snappedTargetId = null;
     this.activeWire.snappedPortPos = null;
 
+    let bestCandidate: {
+      id: string;
+      portPos: { x: number; y: number };
+      el: HTMLElement;
+      portIn: HTMLElement;
+      dist: number;
+    } | null = null;
+
     if (this.activeWire.mode === 'main') {
       const p = project.get();
       for (const ev of p.events) {
@@ -1296,11 +1325,9 @@ export class GraphCanvas {
           clientY <= rect.bottom + 15;
 
         if (dist < 45 || isInside) {
-          this.activeWire.snappedTargetId = ev.id;
-          this.activeWire.snappedPortPos = portCanvasPos;
-          el.classList.add('snap-target-hover');
-          portIn.classList.add('snap-port-hover');
-          break;
+          if (!bestCandidate || dist < bestCandidate.dist) {
+            bestCandidate = { id: ev.id, portPos: portCanvasPos, el, portIn, dist };
+          }
         }
       }
     } else if (this.activeWire.mode === 'subgraph' && this.subGraphEventId) {
@@ -1324,13 +1351,18 @@ export class GraphCanvas {
           clientY <= rect.bottom + 10;
 
         if (dist < 40 || isInside) {
-          this.activeWire.snappedTargetId = node.id;
-          this.activeWire.snappedPortPos = portCanvasPos;
-          el.classList.add('snap-target-hover');
-          portIn.classList.add('snap-port-hover');
-          break;
+          if (!bestCandidate || dist < bestCandidate.dist) {
+            bestCandidate = { id: node.id, portPos: portCanvasPos, el, portIn, dist };
+          }
         }
       }
+    }
+
+    if (bestCandidate) {
+      this.activeWire.snappedTargetId = bestCandidate.id;
+      this.activeWire.snappedPortPos = bestCandidate.portPos;
+      bestCandidate.el.classList.add('snap-target-hover');
+      bestCandidate.portIn.classList.add('snap-port-hover');
     }
   }
 
@@ -1343,6 +1375,7 @@ export class GraphCanvas {
       caseId?: string;
       isDefault?: boolean;
       optId?: string;
+      initialHasDragged?: boolean;
     }
   ): void {
     if (e.button !== 0) return;
@@ -1353,6 +1386,9 @@ export class GraphCanvas {
     this.cancelActiveWire();
 
     const startPos = this.getPortCanvasPos(portEl);
+    const pointerCanvasPos = this.clientToCanvasPos(e.clientX, e.clientY);
+    const hasDragged = !!config.initialHasDragged;
+
     this.activeWire = {
       mode: config.mode,
       sourceId: config.sourceId,
@@ -1362,14 +1398,17 @@ export class GraphCanvas {
       sourcePortEl: portEl,
       startX: startPos.x,
       startY: startPos.y,
-      currentX: startPos.x,
-      currentY: startPos.y,
-      hasDragged: false,
+      currentX: hasDragged ? pointerCanvasPos.x : startPos.x,
+      currentY: hasDragged ? pointerCanvasPos.y : startPos.y,
+      hasDragged,
       snappedTargetId: null,
       snappedPortPos: null
     };
 
     portEl.classList.add('port-active');
+    if (hasDragged) {
+      this.checkMagnetSnapping(e.clientX, e.clientY, pointerCanvasPos);
+    }
     this.ensureRubberbandElement();
     this.updateRubberbandWire();
 
@@ -1408,13 +1447,17 @@ export class GraphCanvas {
       const wire = this.activeWire;
 
       if (wire.hasDragged) {
+        this.suppressNextViewportClick = true;
+        setTimeout(() => {
+          this.suppressNextViewportClick = false;
+        }, 0);
+
         if (wire.snappedTargetId) {
           this.completeWireConnection(wire.snappedTargetId);
-          this.cancelActiveWire();
         } else {
           const dropCanvasPos = this.clientToCanvasPos(upEv.clientX, upEv.clientY);
           const distFromStart = Math.hypot(dropCanvasPos.x - wire.startX, dropCanvasPos.y - wire.startY);
-          if (distFromStart > 28) {
+          if (distFromStart > 28 && this.isInsideViewport(upEv.clientX, upEv.clientY)) {
             this.openDropOnEmptyMenu(upEv.clientX, upEv.clientY, dropCanvasPos, wire);
           } else {
             this.cancelActiveWire();
@@ -1431,6 +1474,29 @@ export class GraphCanvas {
     window.addEventListener('pointercancel', onPointerUp);
   }
 
+  private querySubSourcePortEl(
+    nodeId: string,
+    caseId?: string,
+    isDefault?: boolean,
+    optId?: string
+  ): HTMLElement | null {
+    const fromEl = document.getElementById(`subnode-${nodeId}`);
+    if (!fromEl) return null;
+    if (isDefault) {
+      return fromEl.querySelector('.port-out[data-default="true"]') as HTMLElement | null;
+    }
+    if (caseId) {
+      return fromEl.querySelector(`.port-out[data-caseid="${caseId}"]`) as HTMLElement | null;
+    }
+    if (optId) {
+      return fromEl.querySelector(`.port-out[data-optid="${optId}"]`) as HTMLElement | null;
+    }
+    return (
+      (fromEl.querySelector('.sub-node-header .port-out') as HTMLElement | null) ||
+      (fromEl.querySelector('.port-out') as HTMLElement | null)
+    );
+  }
+
   private handlePortInPointerDown(
     e: PointerEvent,
     _portInEl: HTMLElement,
@@ -1441,26 +1507,79 @@ export class GraphCanvas {
   ): void {
     if (e.button !== 0) return;
 
+    // 1. 如果当前正处于 Click-to-Connect 或拖拽飞线状态，点击 .port-in 应优先完成连接，而不是拔出旧连线！
     if (config.mode === 'main') {
+      if ((this.activeWire && this.activeWire.mode === 'main') || this.connectingCondId) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (this.activeWire) {
+          this.completeWireConnection(config.targetId);
+        } else {
+          this.completeConnecting(config.targetId);
+          this.pulseNode(config.targetId);
+        }
+        return;
+      }
+
       const p = project.get();
       const ev = p.events.find((x) => x.id === config.targetId);
       if (ev && ev.incomingConditions && ev.incomingConditions.length > 0) {
         e.stopPropagation();
         e.preventDefault();
         const condId = ev.incomingConditions[ev.incomingConditions.length - 1];
-        project.disconnectCondition(ev.id, condId);
-        appState.log(`🔌 已拔出 Condition 依赖连线：[${condId}]，可重新拖动改接至其他 Event`, true);
+        const downX = e.clientX;
+        const downY = e.clientY;
+        let unplugged = false;
 
-        const condEl = document.getElementById(`node-${condId}`);
-        const condPortOut = condEl?.querySelector('.port-out') as HTMLElement | null;
-        if (condPortOut) {
-          this.handlePortPointerDown(e, condPortOut, {
-            mode: 'main',
-            sourceId: condId
-          });
-        }
+        const onMove = (moveEv: PointerEvent) => {
+          if (unplugged) return;
+          if (Math.hypot(moveEv.clientX - downX, moveEv.clientY - downY) > 4) {
+            unplugged = true;
+            cleanupWait();
+            project.disconnectCondition(ev.id, condId);
+            appState.log(`🔌 已拔出 Condition 依赖连线：[${condId}]，可重新拖动改接至其他 Event`, true);
+
+            // 注意：disconnectCondition 内部触发了 rebuildDOM，必须在 rebuild 之后重新查询最新的 DOM 节点！
+            const condEl = document.getElementById(`node-${condId}`);
+            const condPortOut = condEl?.querySelector('.port-out') as HTMLElement | null;
+            if (condPortOut) {
+              this.handlePortPointerDown(moveEv, condPortOut, {
+                mode: 'main',
+                sourceId: condId,
+                initialHasDragged: true
+              });
+            }
+          }
+        };
+
+        const cleanupWait = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', cleanupWait);
+          window.removeEventListener('pointercancel', cleanupWait);
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', cleanupWait);
+        window.addEventListener('pointercancel', cleanupWait);
       }
     } else if (config.mode === 'subgraph' && this.subGraphEventId) {
+      if (
+        (this.activeWire &&
+          this.activeWire.mode === 'subgraph' &&
+          this.activeWire.sourceId !== config.targetId) ||
+        (this.subConnectingSource && this.subConnectingSource.nodeId !== config.targetId)
+      ) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (this.activeWire) {
+          this.completeWireConnection(config.targetId);
+        } else {
+          this.completeSubConnecting(config.targetId);
+          this.pulseNode(config.targetId);
+        }
+        return;
+      }
+
       const ev = project.getEvent(this.subGraphEventId);
       if (!ev || !ev.actionGraph) return;
 
@@ -1469,90 +1588,111 @@ export class GraphCanvas {
         caseId?: string;
         isDefault?: boolean;
         optId?: string;
-        portEl: HTMLElement | null;
       } | null = null;
 
       for (const n of ev.actionGraph.nodes) {
-        if (n.type === 'start' && n.nextId === config.targetId) {
-          const fromEl = document.getElementById(`subnode-${n.id}`);
-          const portEl = fromEl?.querySelector('.port-out') as HTMLElement | null;
-          upstream = { nodeId: n.id, portEl };
-          break;
-        }
-        if (n.type === 'action' && n.nextId === config.targetId) {
-          const fromEl = document.getElementById(`subnode-${n.id}`);
-          const portEl = fromEl?.querySelector('.sub-node-header .port-out') as HTMLElement | null;
-          upstream = { nodeId: n.id, portEl };
+        if ((n.type === 'start' || n.type === 'action') && n.nextId === config.targetId) {
+          upstream = { nodeId: n.id };
           break;
         }
         if (n.type === 'selector') {
           if (n.defaultTargetId === config.targetId) {
-            const fromEl = document.getElementById(`subnode-${n.id}`);
-            const portEl = fromEl?.querySelector('.port-out[data-default="true"]') as HTMLElement | null;
-            upstream = { nodeId: n.id, isDefault: true, portEl };
+            upstream = { nodeId: n.id, isDefault: true };
             break;
           }
           const matchedCase = n.cases.find((c) => c.targetId === config.targetId);
           if (matchedCase) {
-            const fromEl = document.getElementById(`subnode-${n.id}`);
-            const portEl = fromEl?.querySelector(`.port-out[data-caseid="${matchedCase.id}"]`) as HTMLElement | null;
-            upstream = { nodeId: n.id, caseId: matchedCase.id, portEl };
+            upstream = { nodeId: n.id, caseId: matchedCase.id };
             break;
           }
         }
         if (n.type === 'choice') {
           const matchedOpt = n.options.find((o) => o.targetId === config.targetId);
           if (matchedOpt) {
-            const fromEl = document.getElementById(`subnode-${n.id}`);
-            const portEl = fromEl?.querySelector(`.port-out[data-optid="${matchedOpt.id}"]`) as HTMLElement | null;
-            upstream = { nodeId: n.id, optId: matchedOpt.id, portEl };
+            upstream = { nodeId: n.id, optId: matchedOpt.id };
             break;
           }
         }
       }
 
-      if (upstream && upstream.portEl) {
+      if (upstream) {
         e.stopPropagation();
         e.preventDefault();
+        const capturedUpstream = upstream;
+        const downX = e.clientX;
+        const downY = e.clientY;
+        let unplugged = false;
 
-        project.change((d) => {
-          const targetEv = d.events.find((x) => x.id === this.subGraphEventId);
-          const graph = targetEv?.actionGraph;
-          if (!graph) return;
-          const srcNode = graph.nodes.find((n) => n.id === upstream!.nodeId);
-          if (!srcNode) return;
-          if (srcNode.type === 'start' || srcNode.type === 'action') {
-            delete srcNode.nextId;
-            delete srcNode.defaultOptionIndex;
-          } else if (srcNode.type === 'selector') {
-            if (upstream!.isDefault) {
-              delete srcNode.defaultTargetId;
-              delete srcNode.defaultOptionIndex;
-            } else if (upstream!.caseId) {
-              const c = srcNode.cases.find((x) => x.id === upstream!.caseId);
-              if (c) {
-                delete c.targetId;
-                delete c.defaultOptionIndex;
+        const onMove = (moveEv: PointerEvent) => {
+          if (unplugged) return;
+          if (Math.hypot(moveEv.clientX - downX, moveEv.clientY - downY) > 4) {
+            unplugged = true;
+            cleanupWait();
+
+            project.change((d) => {
+              const targetEv = d.events.find((x) => x.id === this.subGraphEventId);
+              const graph = targetEv?.actionGraph;
+              if (!graph) return;
+              const srcNode = graph.nodes.find((n) => n.id === capturedUpstream.nodeId);
+              if (!srcNode) return;
+              if (srcNode.type === 'start' || srcNode.type === 'action') {
+                delete srcNode.nextId;
+                delete srcNode.defaultOptionIndex;
+              } else if (srcNode.type === 'selector') {
+                if (capturedUpstream.isDefault) {
+                  delete srcNode.defaultTargetId;
+                  delete srcNode.defaultOptionIndex;
+                } else if (capturedUpstream.caseId) {
+                  const c = srcNode.cases.find((x) => x.id === capturedUpstream.caseId);
+                  if (c) {
+                    delete c.targetId;
+                    delete c.defaultOptionIndex;
+                  }
+                }
+              } else if (srcNode.type === 'choice' && capturedUpstream.optId) {
+                const o = srcNode.options.find((x) => x.id === capturedUpstream.optId);
+                if (o) {
+                  delete o.targetId;
+                  delete o.defaultOptionIndex;
+                }
               }
-            }
-          } else if (srcNode.type === 'choice' && upstream!.optId) {
-            const o = srcNode.options.find((x) => x.id === upstream!.optId);
-            if (o) {
-              delete o.targetId;
-              delete o.defaultOptionIndex;
+            }, 'structure');
+
+            appState.log(
+              `🔌 已拔出连线：[${capturedUpstream.nodeId}] ➔ [${config.targetId}]，可拖动改接至新目标`,
+              true
+            );
+
+            // 关键：project.change('structure') 同步触发了 rebuildSubGraphDOM，旧 DOM 节点已被销毁！
+            // 必须在 rebuild 之后重新查询新鲜挂载的 .port-out 元素，否则 getBoundingClientRect() 会返回 (0,0)！
+            const freshPortEl = this.querySubSourcePortEl(
+              capturedUpstream.nodeId,
+              capturedUpstream.caseId,
+              capturedUpstream.isDefault,
+              capturedUpstream.optId
+            );
+            if (freshPortEl) {
+              this.handlePortPointerDown(moveEv, freshPortEl, {
+                mode: 'subgraph',
+                sourceId: capturedUpstream.nodeId,
+                caseId: capturedUpstream.caseId,
+                isDefault: capturedUpstream.isDefault,
+                optId: capturedUpstream.optId,
+                initialHasDragged: true
+              });
             }
           }
-        }, 'structure');
+        };
 
-        appState.log(`🔌 已拔出连线：[${upstream.nodeId}] ➔ [${config.targetId}]，可拖动改接至新目标`, true);
+        const cleanupWait = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', cleanupWait);
+          window.removeEventListener('pointercancel', cleanupWait);
+        };
 
-        this.handlePortPointerDown(e, upstream.portEl, {
-          mode: 'subgraph',
-          sourceId: upstream.nodeId,
-          caseId: upstream.caseId,
-          isDefault: upstream.isDefault,
-          optId: upstream.optId
-        });
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', cleanupWait);
+        window.addEventListener('pointercancel', cleanupWait);
       }
     }
   }
@@ -1560,9 +1700,22 @@ export class GraphCanvas {
   private completeWireConnection(targetId: string): void {
     if (!this.activeWire) return;
     const mode = this.activeWire.mode;
+    const condId = this.connectingCondId || this.activeWire.sourceId;
+    const subSrc = this.subConnectingSource || {
+      nodeId: this.activeWire.sourceId,
+      caseId: this.activeWire.caseId,
+      isDefault: this.activeWire.isDefault,
+      optId: this.activeWire.optId
+    };
+
+    // 先清理 activeWire，避免 completeConnecting 内部的 project.change -> renderEdges 重复绘制临时飞线
+    this.cancelActiveWire();
+
     if (mode === 'main') {
+      this.connectingCondId = condId;
       this.completeConnecting(targetId);
     } else {
+      this.subConnectingSource = subSrc;
       this.completeSubConnecting(targetId);
     }
     this.pulseNode(targetId);
@@ -1578,8 +1731,10 @@ export class GraphCanvas {
 
     const menu = document.createElement('div');
     menu.className = 'wire-drop-menu';
-    menu.style.left = `${clientX + 6}px`;
-    menu.style.top = `${clientY + 6}px`;
+    const clampedX = Math.max(12, Math.min(clientX + 6, window.innerWidth - 250));
+    const clampedY = Math.max(12, Math.min(clientY + 6, window.innerHeight - 190));
+    menu.style.left = `${clampedX}px`;
+    menu.style.top = `${clampedY}px`;
 
     if (wire.mode === 'main') {
       const cond = project.getCondition(wire.sourceId);
@@ -1613,22 +1768,31 @@ export class GraphCanvas {
       (item as HTMLElement).onclick = (e) => {
         e.stopPropagation();
         const action = (item as HTMLElement).dataset.action;
+        const sourceId = wire.sourceId;
+        const subSrc = {
+          nodeId: wire.sourceId,
+          caseId: wire.caseId,
+          isDefault: wire.isDefault,
+          optId: wire.optId
+        };
+
         this.closeDropMenu();
+        this.cancelActiveWire();
 
         if (action === 'new-event') {
           const newEv = project.addEvent(canvasPos.x, canvasPos.y);
+          this.connectingCondId = sourceId;
           this.completeConnecting(newEv.id);
           appState.select({ kind: 'event', id: newEv.id });
           this.pulseNode(newEv.id);
-          this.cancelActiveWire();
         } else if (action === 'new-action' || action === 'new-selector' || action === 'new-choice') {
           const subType = action === 'new-action' ? 'action' : action === 'new-selector' ? 'selector' : 'choice';
           const newId = this.createSubNodeAt(subType, canvasPos.x, canvasPos.y);
           if (newId) {
+            this.subConnectingSource = subSrc;
             this.completeSubConnecting(newId);
             this.pulseNode(newId);
           }
-          this.cancelActiveWire();
         }
       };
     });
@@ -1686,7 +1850,7 @@ export class GraphCanvas {
     this.connectingBannerEl.style.display = 'flex';
     this.connectingBannerEl.querySelector('#btnCancelConnect')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.cancelConnecting();
+      this.cancelActiveWire();
     });
   }
 
@@ -1701,6 +1865,13 @@ export class GraphCanvas {
     const chosenCondId = this.connectingCondId;
     this.cancelConnecting();
     if (!chosenCondId) return;
+
+    const existingEv = project.getEvent(evId);
+    if (!existingEv) return;
+    if (existingEv.incomingConditions && existingEv.incomingConditions.includes(chosenCondId)) {
+      appState.log(`ℹ️ Event [${evId}] 已依赖 Condition [${chosenCondId}]`, true);
+      return;
+    }
 
     project.change((d) => {
       const targetEv = d.events.find((x) => x.id === evId);
@@ -1828,56 +1999,46 @@ export class GraphCanvas {
       const ev = project.getEvent(edge.to);
       if (!cond || !ev) return;
 
-      const posFrom = { x: cond.x, y: cond.y };
-      const posTo = { x: ev.x, y: ev.y };
+      const outPortEl = fromEl.querySelector('.port-out') as HTMLElement | null;
+      const inPortEl = toEl.querySelector('.port-in') as HTMLElement | null;
+
       const fromW = fromEl.offsetWidth || 180;
       const fromH = fromEl.offsetHeight || 38;
-      const toW = toEl.offsetWidth || 200;
       const toH = toEl.offsetHeight || 38;
+
+      const p1 = outPortEl
+        ? this.getPortCanvasPos(outPortEl)
+        : { x: cond.x + fromW, y: cond.y + fromH * 0.5 };
+      const p2 = inPortEl
+        ? this.getPortCanvasPos(inPortEl)
+        : { x: ev.x - 3, y: ev.y + toH * 0.5 };
+
+      const x1 = p1.x;
+      const y1 = p1.y;
+      const x2 = p2.x;
+      const y2 = p2.y;
 
       const condActive = evalCondition(p, state, cond);
       const isSelected =
         sel &&
         ((sel.kind === 'condition' && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
 
-      let x1: number, y1: number, x2: number, y2: number;
       let cx1: number, cy1: number, cx2: number, cy2: number;
-
-      // 判断相对方位
-      if (posFrom.x + fromW <= posTo.x + 10) {
-        // Condition 在左，Event 在右：常规流向
-        x1 = posFrom.x + fromW;
-        y1 = posFrom.y + fromH * 0.5;
-        x2 = posTo.x - 3;
-        y2 = posTo.y + toH * 0.5;
-        const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
+      if (x2 >= x1 - 10) {
+        const dx = Math.max(Math.abs(x2 - x1) * 0.45, 45);
         cx1 = x1 + dx;
         cy1 = y1;
         cx2 = x2 - dx;
         cy2 = y2;
-      } else if (posFrom.x >= posTo.x + toW - 10) {
-        // Condition 在右，Event 在左：外部依赖反向回指（如 condition ➔ 国王）
-        x1 = posFrom.x;
-        y1 = posFrom.y + fromH * 0.5;
-        x2 = posTo.x + toW + 3;
-        y2 = posTo.y + toH * 0.5;
-        const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
-        const dy = posTo.y - posFrom.y;
-        cx1 = x1 - dx;
-        cy1 = y1 + dy * 0.2;
-        cx2 = x2 + dx;
-        cy2 = y2 - dy * 0.2;
       } else {
-        // 上下排列
-        x1 = posFrom.x + fromW / 2;
-        y1 = posFrom.y + (posFrom.y < posTo.y ? fromH : 0);
-        x2 = posTo.x + toW / 2;
-        y2 = posTo.y + (posFrom.y < posTo.y ? -3 : toH + 3);
-        const dy = Math.max(Math.abs(y2 - y1) * 0.45, 30);
-        cx1 = x1;
-        cy1 = y1 + (posFrom.y < posTo.y ? dy : -dy);
-        cx2 = x2;
-        cy2 = y2 + (posFrom.y < posTo.y ? -dy : dy);
+        // 反向或上下回绕：从右侧 Out 端口平滑引出并绕入左侧 In 端口
+        const loopDx = Math.max(Math.abs(x1 - x2) * 0.35, 70);
+        const verticalSpan = Math.abs(y2 - y1);
+        const curveOffsetY = verticalSpan < 50 ? (y2 <= y1 ? -55 : 55) : 0;
+        cx1 = x1 + loopDx;
+        cy1 = y1 + curveOffsetY;
+        cx2 = x2 - loopDx;
+        cy2 = y2 + curveOffsetY;
       }
 
       this.drawSvgPath({
@@ -2480,7 +2641,7 @@ export class GraphCanvas {
     });
 
     this.viewport.onclick = (e) => {
-      if (this.hasMovedPanning) return;
+      if (this.hasMovedPanning || this.suppressNextViewportClick) return;
       if (
         e.target === this.viewport ||
         e.target === this.canvas ||
@@ -2530,6 +2691,8 @@ export class GraphCanvas {
   private bindContextMenu(): void {
     this.viewport.oncontextmenu = (e) => {
       e.preventDefault();
+      this.closeDropMenu();
+      this.cancelActiveWire();
       const rect = this.viewport.getBoundingClientRect();
       const screenX = e.clientX;
       const screenY = e.clientY;

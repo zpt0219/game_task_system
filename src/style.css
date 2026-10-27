@@ -1682,12 +1682,11 @@ input:checked + .slider:before {
   filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.95)) !important;
 }
 
-/* 磁吸靠近目标节点时的发光与放大反馈 */
+/* 磁吸靠近目标节点时的发光反馈（移除整卡 scale 以防 getBoundingClientRect 坐标抖动偏移） */
 .snap-target-hover {
   outline: 2.5px solid #10b981 !important;
   box-shadow: 0 0 24px rgba(16, 185, 129, 0.65) !important;
-  transform: scale(1.025);
-  transition: transform 0.12s ease, box-shadow 0.12s ease, outline 0.12s ease;
+  transition: box-shadow 0.12s ease, outline 0.12s ease;
 }
 
 .snap-port-hover {
