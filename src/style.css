@@ -1603,8 +1603,6 @@ input:checked + .slider:before {
    ========================================================================== */
 .node-port {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -1615,12 +1613,25 @@ input:checked + .slider:before {
   transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .node-port:hover, .node-port.port-active {
-  transform: translateY(-50%) scale(1.35);
   background: #38bdf8;
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
 }
 .port-out {
   right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.port-out[data-side="left"], .port-out-left {
+  left: -7px !important;
+  right: auto !important;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.port-out[data-side="right"], .port-out-right {
+  right: -7px !important;
+  left: auto !important;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .port-in {
   left: -7px;
@@ -1629,6 +1640,22 @@ input:checked + .slider:before {
 .port-in:hover {
   background: #10b981;
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+}
+.port-in.port-in-empty {
+  border-style: dashed !important;
+  opacity: 0.45;
+  background: rgba(16, 185, 129, 0.15);
+}
+.port-in.port-in-empty:hover {
+  opacity: 1;
+  border-style: solid !important;
+  background: #10b981;
+}
+
+.edge-path.hover-highlight {
+  stroke: #34d399 !important;
+  stroke-width: 3.6 !important;
+  filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.95)) !important;
 }
 
 .connecting-banner {
