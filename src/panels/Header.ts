@@ -1,9 +1,9 @@
-import { project, SaveStatus } from '../core/project';
-import { appState, buildInitialState } from '../core/state';
-import { GraphCanvas } from './GraphCanvas';
-import { RegisterVarModal } from './RegisterVarModal';
+import { ViewModel } from '../app/viewModel';
+import { SaveStatus } from '../command/events';
+import { GraphCanvasPanel } from './canvas/GraphCanvasPanel';
+import { Panel } from './Panel';
 
-export class Header {
+export class Header extends Panel {
   private playBtn: HTMLButtonElement;
   private editBtn: HTMLButtonElement;
   private undoBtn: HTMLButtonElement;
@@ -19,13 +19,15 @@ export class Header {
   private resetBtn: HTMLButtonElement;
   private resetLayoutBtn: HTMLButtonElement | null;
   private saveStatusBadge: HTMLElement | null;
+  private readonly abortCtrl = new AbortController();
 
   constructor(
-    private onResetLayout?: () => void,
-    private canvas?: GraphCanvas | null,
-    private onAddEvent?: () => void,
-    private onAddCondition?: () => void
+    vm: ViewModel,
+    private readonly canvas: GraphCanvasPanel | null = null,
+    private readonly onResetLayout?: () => void
   ) {
+    super(vm);
+
     this.playBtn = document.getElementById('modePlayBtn') as HTMLButtonElement;
     this.editBtn = document.getElementById('modeEditBtn') as HTMLButtonElement;
     this.undoBtn = document.getElementById('btnUndo') as HTMLButtonElement;
@@ -42,60 +44,74 @@ export class Header {
     this.resetLayoutBtn = document.getElementById('btnResetLayout') as HTMLButtonElement | null;
     this.saveStatusBadge = document.getElementById('saveStatusBadge');
 
-    this.initPresets();
     this.bindEvents();
+    this.render();
+  }
+
+  onProjectLoaded(): void {
+    this.markDirty();
+  }
+
+  onDocumentChanged(): void {
+    this.markDirty();
+  }
+
+  onSessionChanged(): void {
+    this.markDirty();
+  }
+
+  onHistoryChanged(): void {
+    this.updateUndoRedo();
+  }
+
+  onSaveStatus(status: SaveStatus, error?: string): void {
+    this.updateSaveStatus(status, error);
+  }
+
+  override render(): void {
+    this.initPresets();
     this.updateUndoRedo();
 
-    appState.onModeChange((mode) => {
-      if (mode === 'play') {
-        this.playBtn.classList.add('active');
-        this.editBtn.classList.remove('active');
+    const { mode, subGraphEventId } = this.vm.session;
+    if (mode === 'play') {
+      this.playBtn.classList.add('active');
+      this.editBtn.classList.remove('active');
+    } else {
+      this.editBtn.classList.add('active');
+      this.playBtn.classList.remove('active');
+    }
+
+    if (this.mainGraphTools && this.subGraphTools) {
+      if (subGraphEventId) {
+        this.mainGraphTools.style.display = 'none';
+        this.subGraphTools.style.display = 'flex';
       } else {
-        this.editBtn.classList.add('active');
-        this.playBtn.classList.remove('active');
+        this.mainGraphTools.style.display = 'flex';
+        this.subGraphTools.style.display = 'none';
       }
-    });
-
-    appState.onSubGraphChange((subEventId) => {
-      if (this.mainGraphTools && this.subGraphTools) {
-        if (subEventId) {
-          this.mainGraphTools.style.display = 'none';
-          this.subGraphTools.style.display = 'flex';
-        } else {
-          this.mainGraphTools.style.display = 'flex';
-          this.subGraphTools.style.display = 'none';
-        }
-      }
-    });
-
-    project.onChange(() => {
-      this.initPresets();
-      this.updateUndoRedo();
-    });
-
-    project.onSaveStatus((status, err) => this.updateSaveStatus(status, err));
+    }
   }
 
   public initPresets(): void {
-    const p = project.get();
+    const doc = this.vm.doc;
     const curVal = this.presetSelect.value;
     this.presetSelect.innerHTML = '';
 
-    p.presets.forEach((preset) => {
+    doc.presets.forEach((preset) => {
       const opt = document.createElement('option');
       opt.value = preset.id;
       opt.textContent = preset.name;
       this.presetSelect.appendChild(opt);
     });
 
-    if (curVal && p.presets.some((x) => x.id === curVal)) {
+    if (curVal && doc.presets.some((x) => x.id === curVal)) {
       this.presetSelect.value = curVal;
     }
   }
 
   private updateUndoRedo(): void {
-    if (this.undoBtn) this.undoBtn.disabled = !project.canUndo();
-    if (this.redoBtn) this.redoBtn.disabled = !project.canRedo();
+    if (this.undoBtn) this.undoBtn.disabled = !this.vm.canUndo;
+    if (this.redoBtn) this.redoBtn.disabled = !this.vm.canRedo;
   }
 
   private updateSaveStatus(status: SaveStatus, err?: string): void {
@@ -114,19 +130,15 @@ export class Header {
   }
 
   private bindEvents(): void {
-    this.playBtn.onclick = () => appState.setMode('play');
-    this.editBtn.onclick = () => appState.setMode('edit');
+    this.playBtn.onclick = () => this.vm.setMode('play');
+    this.editBtn.onclick = () => this.vm.setMode('edit');
 
     this.undoBtn.onclick = () => {
-      if (project.undo()) {
-        appState.log('↺ 撤销了上一步操作');
-      }
+      this.vm.undo();
     };
 
     this.redoBtn.onclick = () => {
-      if (project.redo()) {
-        appState.log('↻ 重做了上一步操作');
-      }
+      this.vm.redo();
     };
 
     // 绑定 Event / Condition 的按住拖拽生成与快捷点击创建
@@ -136,7 +148,7 @@ export class Header {
     const addVarBtn = document.getElementById('btnAddVarHeader') as HTMLButtonElement | null;
     if (addVarBtn) {
       addVarBtn.onclick = () => {
-        RegisterVarModal.open();
+        this.vm.openRegisterVarModal();
       };
     }
 
@@ -147,36 +159,29 @@ export class Header {
 
     this.presetSelect.onchange = (e) => {
       const targetId = (e.target as HTMLSelectElement).value;
-      const found = project.get().presets.find((x) => x.id === targetId);
-      if (found) {
-        const s = buildInitialState(project.get(), found.values);
-        appState.setState(s);
-        appState.setFocalVar(null);
-        appState.log(`⚡ 加载测试预设：[${found.name}]`, true);
-      }
+      this.vm.applyPreset(targetId);
     };
 
     if (this.resetLayoutBtn) {
       this.resetLayoutBtn.onclick = () => {
-        if (this.onResetLayout) this.onResetLayout();
+        if (this.onResetLayout) {
+          this.onResetLayout();
+        } else if (this.canvas) {
+          this.canvas.resetLayout();
+          this.vm.log('📐 已恢复标准任务布局！', true);
+        }
       };
     }
 
     this.resetBtn.onclick = () => {
       this.presetSelect.value = 'initial';
-      const s = buildInitialState(project.get());
-      appState.setState(s);
-      appState.setFocalVar(null);
-      appState.log('🔄 已重置所有世界数据与主角状态为初始态！', true);
+      this.vm.resetWorldState();
     };
   }
 
   // ------------------------------------------------------------------ 拖拽与点击生成节点
 
-  private setupNodeDragCreation(
-    btn: HTMLButtonElement,
-    type: 'event' | 'condition'
-  ): void {
+  private setupNodeDragCreation(btn: HTMLButtonElement, type: 'event' | 'condition'): void {
     let isMouseDown = false;
     let isDragging = false;
     let startX = 0;
@@ -184,7 +189,6 @@ export class Header {
     let ghostEl: HTMLElement | null = null;
     let justDragged = false;
 
-    // 防止浏览器默认的按钮拖拽与文字选中
     btn.addEventListener('dragstart', (e) => e.preventDefault());
 
     const cleanup = () => {
@@ -202,13 +206,11 @@ export class Header {
         ghostEl.remove();
         ghostEl = null;
       }
-      if (this.canvas) {
-        this.canvas.setDragOverState(false);
-      }
+      this.vm.setCanvasDragReceiving(false);
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return; // 仅响应鼠标左键
+      if (e.button !== 0) return;
       isMouseDown = true;
       isDragging = false;
       justDragged = false;
@@ -233,7 +235,6 @@ export class Header {
           document.body.style.cursor = 'grabbing';
           document.body.style.userSelect = 'none';
 
-          // 创建紧随光标的半透明预览幽灵节点
           ghostEl = document.createElement('div');
           ghostEl.className = `node-drag-ghost ghost-${type} compact-node ${
             type === 'event' ? 'event-node available' : 'condition-node'
@@ -265,7 +266,7 @@ export class Header {
         const badgeEl = ghostEl.querySelector('.ghost-hint-badge');
         if (this.canvas && this.canvas.isInsideViewport(e.clientX, e.clientY)) {
           ghostEl.classList.add('is-inside-canvas');
-          this.canvas.setDragOverState(true);
+          this.vm.setCanvasDragReceiving(true);
           const cPos = this.canvas.clientToCanvasPos(e.clientX, e.clientY);
           const nx = Math.round(cPos.x - 70);
           const ny = Math.round(cPos.y - (type === 'event' ? 18 : 17));
@@ -274,7 +275,7 @@ export class Header {
           }
         } else {
           ghostEl.classList.remove('is-inside-canvas');
-          if (this.canvas) this.canvas.setDragOverState(false);
+          this.vm.setCanvasDragReceiving(false);
           if (badgeEl) {
             badgeEl.textContent = `拖至中间画布以放置`;
           }
@@ -308,7 +309,6 @@ export class Header {
 
     btn.addEventListener('mousedown', onMouseDown);
 
-    // 未产生拖拽时的普通点击兜底：在当前画布视野中央创建
     btn.addEventListener('click', (e) => {
       if (justDragged) {
         justDragged = false;
@@ -318,9 +318,6 @@ export class Header {
       }
       if (this.canvas) {
         this.canvas.createNodeAtCenter(type);
-      } else {
-        if (type === 'event' && this.onAddEvent) this.onAddEvent();
-        if (type === 'condition' && this.onAddCondition) this.onAddCondition();
       }
     });
   }
@@ -353,9 +350,7 @@ export class Header {
         ghostEl.remove();
         ghostEl = null;
       }
-      if (this.canvas) {
-        this.canvas.setDragOverState(false);
-      }
+      this.vm.setCanvasDragReceiving(false);
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -408,7 +403,7 @@ export class Header {
         const badgeEl = ghostEl.querySelector('.ghost-hint-badge');
         if (this.canvas && this.canvas.isInsideViewport(e.clientX, e.clientY)) {
           ghostEl.classList.add('is-inside-canvas');
-          this.canvas.setDragOverState(true);
+          this.vm.setCanvasDragReceiving(true);
           const cPos = this.canvas.clientToCanvasPos(e.clientX, e.clientY);
           const nx = Math.round(cPos.x - 80);
           const ny = Math.round(cPos.y - 20);
@@ -417,7 +412,7 @@ export class Header {
           }
         } else {
           ghostEl.classList.remove('is-inside-canvas');
-          if (this.canvas) this.canvas.setDragOverState(false);
+          this.vm.setCanvasDragReceiving(false);
           if (badgeEl) {
             badgeEl.textContent = `拖至中间画布以放置`;
           }
@@ -462,5 +457,9 @@ export class Header {
         this.canvas.createSubNodeAtCenter(type);
       }
     });
+  }
+
+  protected override onDispose(): void {
+    this.abortCtrl.abort();
   }
 }

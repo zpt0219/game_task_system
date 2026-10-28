@@ -9,10 +9,13 @@
     "build": "tsc && vite build",
     "deploy": "npm run build && sudo rsync -av --delete dist/ /var/www/adna/game_task_system/ && sudo chown -R www-data:www-data /var/www/adna/game_task_system/",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --project tsconfig.tests.json --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "vite": "^5.2.11",
+    "vitest": "^2.1.9"
   }
 }

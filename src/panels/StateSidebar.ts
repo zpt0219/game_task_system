@@ -1,36 +1,69 @@
-import { project } from '../core/project';
-import { appState } from '../core/state';
-import { RegisterVarModal } from './RegisterVarModal';
+import { ViewModel } from '../app/viewModel';
+import { DocumentChangeSource, LogEntry } from '../command/events';
+import { StateChangeMeta } from '../core/session';
+import { WorldState } from '../core/types';
+import { Panel } from './Panel';
 
-export class StateSidebar {
+export class StateSidebar extends Panel {
   private container: HTMLElement;
+  private controlsRoot: HTMLElement;
   private logBox: HTMLElement;
+  private pendingFlashKeys = new Set<string>();
 
-  constructor() {
+  constructor(vm: ViewModel) {
+    super(vm);
     this.container = document.getElementById('leftSidebar') as HTMLElement;
-    this.logBox = document.getElementById('logBox') as HTMLElement;
+
+    // 将状态控制区与实时日志容器彻底解耦，避免重绘时清空日志（修复 Bug #1）
+    this.container.innerHTML = `
+      <div id="sidebarControlsRoot"></div>
+      <section class="panel-section" style="flex: 1; display: flex; flex-direction: column;">
+        <div class="panel-title">
+          <span>📜 实时事件与状态流转日志</span>
+        </div>
+        <div id="logBox" class="log-box"></div>
+      </section>
+    `;
+    this.controlsRoot = this.container.querySelector('#sidebarControlsRoot') as HTMLElement;
+    this.logBox = this.container.querySelector('#logBox') as HTMLElement;
+
+    // 同步已有日志
+    for (let i = this.vm.context.logs.length - 1; i >= 0; i--) {
+      this.renderLogEntry(this.vm.context.logs[i]);
+    }
 
     this.render();
-
-    appState.onStateChange((_state, meta) => {
-      this.render();
-      if (meta && meta.changedVars && meta.changedVars.length > 0) {
-        meta.changedVars.forEach((k) => this.flashVarItem(k));
-      }
-    });
-    appState.onModeChange(() => this.render());
-    appState.onLog((msg, hl) => this.appendLog(msg, hl));
-    project.onChange((src) => {
-      if (src !== 'drag' && src !== 'field') {
-        this.render();
-      }
-    });
   }
 
-  public render(): void {
-    const p = project.get();
-    const state = appState.getState();
-    const isEdit = appState.getMode() === 'edit';
+  onProjectLoaded(): void {
+    this.markDirty();
+  }
+
+  onSessionChanged(): void {
+    this.markDirty();
+  }
+
+  onWorldStateChanged(_state: WorldState, meta?: StateChangeMeta): void {
+    if (meta && meta.changedVars && meta.changedVars.length > 0) {
+      meta.changedVars.forEach((k) => this.pendingFlashKeys.add(k));
+    }
+    this.markDirty();
+  }
+
+  onDocumentChanged(source: DocumentChangeSource): void {
+    if (source !== 'drag' && source !== 'field') {
+      this.markDirty();
+    }
+  }
+
+  onLogAdded(entry: LogEntry): void {
+    this.renderLogEntry(entry);
+  }
+
+  override render(): void {
+    const doc = this.vm.doc;
+    const state = this.vm.session.worldState;
+    const isEdit = this.vm.session.mode === 'edit';
 
     // 提取主要属性
     const hp = Number(state['hero.hp'] ?? 60);
@@ -42,13 +75,13 @@ export class StateSidebar {
     const hpPct = Math.min(100, Math.max(0, Math.round((hp / maxHp) * 100)));
 
     // 分类变量
-    const partyVars = p.vars.filter((v) => v.category === 'party');
-    const itemVars = p.vars.filter((v) => v.category === 'item');
-    const tpVars = p.vars.filter((v) => v.category === 'teleport');
-    const achVars = p.vars.filter((v) => v.category === 'achievement');
-    const flagVars = p.vars.filter((v) => v.category === 'flag');
+    const partyVars = doc.vars.filter((v) => v.category === 'party');
+    const itemVars = doc.vars.filter((v) => v.category === 'item');
+    const tpVars = doc.vars.filter((v) => v.category === 'teleport');
+    const achVars = doc.vars.filter((v) => v.category === 'achievement');
+    const flagVars = doc.vars.filter((v) => v.category === 'flag');
 
-    this.container.innerHTML = `
+    this.controlsRoot.innerHTML = `
       <!-- 勇者基础属性 -->
       <section class="panel-section">
         <div class="panel-title">
@@ -83,7 +116,7 @@ export class StateSidebar {
           <div class="stat-item" style="grid-column: span 2;">
             <div class="stat-label">金币 GOLD</div>
             <div class="stat-val-row">
-              <span class="stat-value" style="color: #fbbf24;">${gold} G</span>
+              <span id="statGold" class="stat-value" style="color: #fbbf24;">${gold} G</span>
               <button id="btnGoldPlus" class="mini-btn" style="width: auto; padding: 2px 8px;" title="+100 金币">+100G</button>
             </div>
           </div>
@@ -237,74 +270,69 @@ export class StateSidebar {
       `
           : ''
       }
-
-      <!-- 实时事件日志 -->
-      <section class="panel-section" style="flex: 1; display: flex; flex-direction: column;">
-        <div class="panel-title">
-          <span>📜 实时事件与状态流转日志</span>
-        </div>
-        <div id="logBox" class="log-box"></div>
-      </section>
     `;
 
-    // 重新挂载日志 DOM
-    this.logBox = this.container.querySelector('#logBox') as HTMLElement;
-
     // 绑定基础微调按钮
-    this.container.querySelector('#btnHpMinus')?.addEventListener('click', () => {
-      appState.mutate((s) => {
+    this.controlsRoot.querySelector('#btnHpMinus')?.addEventListener('click', () => {
+      this.vm.mutateWorldState((s) => {
         s['hero.hp'] = Math.max(1, Number(s['hero.hp'] ?? 60) - 10);
       });
     });
 
-    this.container.querySelector('#btnHpPlus')?.addEventListener('click', () => {
-      appState.mutate((s) => {
+    this.controlsRoot.querySelector('#btnHpPlus')?.addEventListener('click', () => {
+      this.vm.mutateWorldState((s) => {
         const curMax = Number(s['hero.maxHp'] ?? 100);
         s['hero.hp'] = Math.min(curMax, Number(s['hero.hp'] ?? 60) + 10);
       });
     });
 
-    this.container.querySelector('#btnGoldPlus')?.addEventListener('click', () => {
-      appState.mutate((s) => {
+    this.controlsRoot.querySelector('#btnGoldPlus')?.addEventListener('click', () => {
+      this.vm.mutateWorldState((s) => {
         s['hero.gold'] = Number(s['hero.gold'] ?? 50) + 100;
       });
-      appState.log('💰 调试辅助：+100 金币入账！');
+      this.vm.log('💰 调试辅助：+100 金币入账！');
     });
 
     // 成就单项重置
-    this.container.querySelectorAll('.ach-reset-btn').forEach((btn) => {
+    this.controlsRoot.querySelectorAll('.ach-reset-btn').forEach((btn) => {
       (btn as HTMLElement).onclick = (e) => {
         e.stopPropagation();
         const key = (btn as HTMLElement).dataset.key;
         if (key) {
-          appState.mutate((s) => {
+          this.vm.mutateWorldState((s) => {
             s[key] = 'active';
           });
-          appState.log(`🏆 成就状态已重置为进行中：[${key}]`);
+          this.vm.log(`🏆 成就状态已重置为进行中：[${key}]`);
         }
       };
     });
 
     // 点击变量项：聚焦并打开该变量的专属因果图谱！
-    this.container.querySelectorAll('.var-clickable').forEach((el) => {
+    this.controlsRoot.querySelectorAll('.var-clickable').forEach((el) => {
       (el as HTMLElement).onclick = () => {
         const key = (el as HTMLElement).dataset.key;
         if (key) {
-          appState.select({ kind: 'var', id: key });
-          appState.setFocalVar(key);
-          appState.log(`🎯 打开变量 [${key}] 专属图谱，展现所有读写关联。`, true);
+          this.vm.select({ kind: 'var', id: key });
+          this.vm.setFocalVar(key);
+          this.vm.log(`🎯 打开变量 [${key}] 专属图谱，展现所有读写关联。`, true);
         }
       };
     });
 
     // 编辑模式添加变量
-    this.container.querySelector('#btnAddVar')?.addEventListener('click', () => {
-      RegisterVarModal.open();
+    this.controlsRoot.querySelector('#btnAddVar')?.addEventListener('click', () => {
+      this.vm.openRegisterVarModal();
     });
+
+    if (this.pendingFlashKeys.size > 0) {
+      const keys = [...this.pendingFlashKeys];
+      this.pendingFlashKeys.clear();
+      keys.forEach((k) => this.flashVarItem(k));
+    }
   }
 
   private flashVarItem(key: string): void {
-    const el = this.container.querySelector(`[data-key="${key}"]`) as HTMLElement | null;
+    const el = this.controlsRoot.querySelector(`[data-key="${key}"]`) as HTMLElement | null;
     if (el) {
       el.classList.add('var-item-glow');
       setTimeout(() => el.classList.remove('var-item-glow'), 1400);
@@ -316,7 +344,9 @@ export class StateSidebar {
         setTimeout(() => hpEl.classList.remove('var-item-glow'), 1400);
       }
     } else if (key === 'hero.gold') {
-      const goldSpan = this.container.querySelector('#statGold, .stat-item:has(#btnGoldPlus)') as HTMLElement | null;
+      const goldSpan = this.controlsRoot.querySelector(
+        '#statGold, .stat-item:has(#btnGoldPlus)'
+      ) as HTMLElement | null;
       if (goldSpan) {
         goldSpan.classList.add('var-item-glow');
         setTimeout(() => goldSpan.classList.remove('var-item-glow'), 1400);
@@ -324,12 +354,11 @@ export class StateSidebar {
     }
   }
 
-  public appendLog(message: string, isHighlight = false): void {
+  private renderLogEntry(entry: LogEntry): void {
     if (!this.logBox) return;
-    const time = new Date().toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${isHighlight ? 'highlight' : ''}`;
-    entry.innerHTML = `[${time}] ${message}`;
-    this.logBox.prepend(entry);
+    const div = document.createElement('div');
+    div.className = `log-entry ${entry.isHighlight ? 'highlight' : ''}`;
+    div.innerHTML = `[${entry.time}] ${entry.message}`;
+    this.logBox.prepend(div);
   }
 }

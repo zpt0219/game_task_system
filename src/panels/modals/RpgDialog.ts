@@ -1,5 +1,5 @@
-import { DialogConfig } from '../core/types';
-import { parseBBCode } from '../utils/bbcode';
+import { DialogConfig } from '../../core/types';
+import { parseBBCode } from '../../utils/bbcode';
 
 export class RpgDialog {
   private overlay: HTMLElement;
@@ -37,7 +37,9 @@ export class RpgDialog {
       config.options.forEach((opt, idx) => {
         const btn = document.createElement('button');
         const isDefault = idx === defaultIdx;
-        btn.className = `dialog-btn ${opt.className || 'primary-btn'} ${isDefault ? 'default-choice-btn' : ''}`;
+        btn.className = `dialog-btn ${opt.className || 'primary-btn'} ${
+          isDefault ? 'default-choice-btn' : ''
+        }`;
         btn.textContent = opt.text;
         btn.disabled = !!opt.disabled;
         if (isDefault) {
@@ -71,5 +73,9 @@ export class RpgDialog {
 
   public close(): void {
     this.overlay.classList.remove('show');
+  }
+
+  public dispose(): void {
+    this.close();
   }
 }

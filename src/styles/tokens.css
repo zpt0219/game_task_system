@@ -1,0 +1,96 @@
+/* ==========================================================================
+   《紫水晶骑士物语》任务与条件图谱原型 - 全局变量与重置样式 (tokens.css)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg-app: #0c0d14;
+  --bg-pane: #131520;
+  --bg-pane-hover: #191c2b;
+  --bg-card: #181b28;
+  --bg-card-hover: #202436;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(139, 92, 246, 0.5);
+
+  --accent-primary: #7c3aed;
+  --accent-primary-hover: #8b5cf6;
+  --accent-primary-glow: rgba(124, 58, 237, 0.35);
+  --accent-secondary: #06b6d4;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+  --accent-success: #10b981;
+
+  --text-main: #f3f4f6;
+  --text-sub: #9ca3af;
+  --text-muted: #6b7280;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* 兼容历史变量名 */
+  --bg-dark: #0c0d14;
+  --bg-panel: #131520;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-bright: rgba(255, 255, 255, 0.16);
+  --text-dim: #6b7280;
+
+  /* 节点类别配色 */
+  --color-cond-char: #a855f7;
+  --color-cond-char-bg: rgba(168, 85, 247, 0.15);
+  --color-cond-item: #10b981;
+  --color-cond-item-bg: rgba(16, 185, 129, 0.15);
+  --color-cond-map: #f59e0b;
+  --color-cond-map-bg: rgba(245, 158, 11, 0.15);
+  --color-cond-ach: #ef4444;
+  --color-cond-ach-bg: rgba(239, 68, 68, 0.15);
+
+  --color-event-card: #181b28;
+  --color-event-border: rgba(255, 255, 255, 0.12);
+  --color-edge-active: #10b981;
+  --color-edge-inactive: #475569;
+  --color-edge-effect: #38bdf8;
+  --color-edge-not: #f59e0b;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+body, html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   全局自定义滚动条 (学习自 64px-portrait-studio)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+

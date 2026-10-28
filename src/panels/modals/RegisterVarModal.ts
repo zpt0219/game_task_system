@@ -1,6 +1,7 @@
-import { project } from '../core/project';
-import { appState } from '../core/state';
-import { VarCategory, VarDef } from '../core/types';
+import { ViewModel } from '../../app/viewModel';
+import { getVar } from '../../core/editOps';
+import { VarCategory, VarDef } from '../../core/types';
+import { Panel } from '../Panel';
 
 interface CategoryConfig {
   id: VarCategory;
@@ -61,64 +62,81 @@ const CATEGORIES: CategoryConfig[] = [
   }
 ];
 
-export class RegisterVarModal {
-  private static instance: RegisterVarModal | null = null;
+export class RegisterVarModal extends Panel {
   private overlay: HTMLElement;
   private selectedCategory: VarCategory = 'item';
   private selectedIcon = '🎒';
   private keyManuallyEdited = false;
+  private wasOpen = false;
   private onCreatedCallback?: (v: VarDef) => void;
+  private readonly abortCtrl = new AbortController();
 
-  private constructor() {
+  constructor(vm: ViewModel) {
+    super(vm);
     this.overlay = document.createElement('div');
     this.overlay.className = 'var-modal-overlay';
     document.body.appendChild(this.overlay);
 
-    this.overlay.addEventListener('click', (e) => {
-      if (e.target === this.overlay) {
-        this.close();
-      }
-    });
+    this.overlay.addEventListener(
+      'click',
+      (e) => {
+        if (e.target === this.overlay) {
+          this.close();
+        }
+      },
+      { signal: this.abortCtrl.signal }
+    );
 
-    window.addEventListener('keydown', (e) => {
-      if (!this.overlay.classList.contains('show')) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        this.close();
-      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        this.submit();
-      }
-    });
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (!this.overlay.classList.contains('show')) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.close();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          this.submit();
+        }
+      },
+      { signal: this.abortCtrl.signal }
+    );
   }
 
-  public static getInstance(): RegisterVarModal {
-    if (!RegisterVarModal.instance) {
-      RegisterVarModal.instance = new RegisterVarModal();
+  onContextChanged(): void {
+    const isOpen = this.vm.context.registerVarModalOpen;
+    if (isOpen !== this.wasOpen) {
+      this.wasOpen = isOpen;
+      if (isOpen) {
+        const defaultCat = this.vm.context.registerVarDefaultCategory;
+        this.selectedCategory = defaultCat;
+        const cat = CATEGORIES.find((c) => c.id === defaultCat) || CATEGORIES[1];
+        this.selectedIcon = cat.defaultIcon;
+        this.keyManuallyEdited = false;
+        this.markDirty();
+      } else {
+        this.overlay.classList.remove('show');
+      }
     }
-    return RegisterVarModal.instance;
   }
 
-  public static open(defaultCategory: VarCategory = 'item', onCreated?: (v: VarDef) => void): void {
-    const modal = RegisterVarModal.getInstance();
-    modal.onCreatedCallback = onCreated;
-    modal.selectedCategory = defaultCategory;
-    const cat = CATEGORIES.find((c) => c.id === defaultCategory) || CATEGORIES[1];
-    modal.selectedIcon = cat.defaultIcon;
-    modal.keyManuallyEdited = false;
-    modal.render();
-    modal.overlay.classList.add('show');
+  public open(defaultCategory: VarCategory = 'item', onCreated?: (v: VarDef) => void): void {
+    this.onCreatedCallback = onCreated;
+    this.vm.openRegisterVarModal(defaultCategory);
   }
 
-  public static close(): void {
-    RegisterVarModal.getInstance().close();
-  }
-
-  private close(): void {
+  public close(): void {
+    this.wasOpen = false;
     this.overlay.classList.remove('show');
+    this.vm.closeRegisterVarModal();
   }
 
-  private render(): void {
+  render(): void {
+    if (!this.vm.context.registerVarModalOpen) {
+      this.overlay.classList.remove('show');
+      return;
+    }
+
     const currentCat = CATEGORIES.find((c) => c.id === this.selectedCategory) || CATEGORIES[1];
 
     this.overlay.innerHTML = `
@@ -218,8 +236,8 @@ export class RegisterVarModal {
       </div>
     `;
 
+    this.overlay.classList.add('show');
     this.bindEvents();
-    // 聚焦名称输入框
     setTimeout(() => {
       const labelInput = this.overlay.querySelector('#inputVarLabel') as HTMLInputElement | null;
       labelInput?.focus();
@@ -252,12 +270,10 @@ export class RegisterVarModal {
   }
 
   private bindEvents(): void {
-    // 关闭按钮
     this.overlay.querySelector('#btnModalClose')?.addEventListener('click', () => this.close());
     this.overlay.querySelector('#btnModalCancel')?.addEventListener('click', () => this.close());
     this.overlay.querySelector('#btnModalSubmit')?.addEventListener('click', () => this.submit());
 
-    // 分类卡片切换
     this.overlay.querySelectorAll('.var-cat-card').forEach((cardEl) => {
       cardEl.addEventListener('click', () => {
         const catId = (cardEl as HTMLElement).dataset.cat as VarCategory;
@@ -272,7 +288,6 @@ export class RegisterVarModal {
       });
     });
 
-    // 表单元素
     const labelInput = this.overlay.querySelector('#inputVarLabel') as HTMLInputElement | null;
     const suffixInput = this.overlay.querySelector('#inputVarKeySuffix') as HTMLInputElement | null;
     const iconInput = this.overlay.querySelector('#inputVarIcon') as HTMLInputElement | null;
@@ -281,7 +296,6 @@ export class RegisterVarModal {
       this.selectedIcon = iconInput.value.trim() || '🔹';
     });
 
-    // 点击 Emoji 快捷按钮
     this.overlay.querySelectorAll('.var-emoji-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -295,13 +309,11 @@ export class RegisterVarModal {
       });
     });
 
-    // 当用户手动修改 key 后，停止自动派生
     suffixInput?.addEventListener('input', () => {
       this.keyManuallyEdited = true;
       this.validateKey();
     });
 
-    // 名称输入联动 Key 建议
     labelInput?.addEventListener('input', () => {
       if (!this.keyManuallyEdited && suffixInput) {
         const suggested = this.generateKeySuffix(labelInput.value);
@@ -329,7 +341,6 @@ export class RegisterVarModal {
     const raw = label.trim().toLowerCase();
     if (!raw) return '';
 
-    // 常用中文词汇自动转纯英文 key
     const dictionary: Record<string, string> = {
       公主: 'princess',
       勇者: 'hero',
@@ -362,7 +373,6 @@ export class RegisterVarModal {
       }
     }
 
-    // 纯英文/数字提取
     const sanitized = raw.replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
     if (sanitized) return sanitized;
 
@@ -390,7 +400,7 @@ export class RegisterVarModal {
     }
 
     const fullKey = this.getFullKey();
-    const existing = project.getVar(fullKey);
+    const existing = getVar(this.vm.doc, fullKey);
     if (existing) {
       msgEl.style.display = 'block';
       msgEl.style.color = '#f87171';
@@ -417,26 +427,27 @@ export class RegisterVarModal {
 
     if (!label) {
       labelInput?.focus();
-      appState.log('⚠️ 请输入实体变量名称！', true);
+      this.vm.log('⚠️ 请输入实体变量名称！', true);
       return;
     }
 
     if (!suffix) {
       suffixInput?.focus();
-      appState.log('⚠️ 请输入唯一的键名标识后缀！', true);
+      this.vm.log('⚠️ 请输入唯一的键名标识后缀！', true);
       return;
     }
 
     const fullKey = this.getFullKey();
-    if (project.getVar(fullKey)) {
+    if (getVar(this.vm.doc, fullKey)) {
       suffixInput?.focus();
-      appState.log(`⚠️ 变量 [${fullKey}] 已经存在，不能重复注册！`, true);
+      this.vm.log(`⚠️ 变量 [${fullKey}] 已经存在，不能重复注册！`, true);
       return;
     }
 
-    // 提取选中的初始值
     let initialVal: boolean | string = false;
-    const checkedRadio = this.overlay.querySelector('input[name="varInitialVal"]:checked') as HTMLInputElement | null;
+    const checkedRadio = this.overlay.querySelector(
+      'input[name="varInitialVal"]:checked'
+    ) as HTMLInputElement | null;
     if (checkedRadio) {
       if (checkedRadio.value === 'true') initialVal = true;
       else if (checkedRadio.value === 'false') initialVal = false;
@@ -446,8 +457,7 @@ export class RegisterVarModal {
     const kind = this.selectedCategory === 'achievement' ? 'enum' : 'bool';
     const options = this.selectedCategory === 'achievement' ? ['active', 'failed'] : undefined;
 
-    // 1. 调用 project.addVar 注册新变量
-    const newVar = project.addVar({
+    const newVar = this.vm.edit.addVar({
       key: fullKey,
       label,
       icon,
@@ -458,26 +468,28 @@ export class RegisterVarModal {
       options
     });
 
-    // 2. 将初始状态注入当前世界状态中
-    appState.mutate((draft) => {
+    this.vm.play.mutateWorldState((draft) => {
       draft[fullKey] = initialVal;
     });
 
-    // 3. 关闭弹窗
     this.close();
 
-    // 4. 选中并打开新实体的专属因果关系图谱
-    appState.select({ kind: 'var', id: fullKey });
-    appState.setFocalVar(fullKey);
+    this.vm.select({ kind: 'var', id: fullKey });
+    this.vm.setFocalVar(fullKey);
 
     const catObj = CATEGORIES.find((c) => c.id === this.selectedCategory);
-    appState.log(
+    this.vm.log(
       `✨ 成功注册【${catObj?.title || this.selectedCategory}】实体：${icon} [${label}] (${fullKey})，描述：${desc || '(无)'}`,
       true
     );
 
-    if (this.onCreatedCallback) {
+    if (newVar && this.onCreatedCallback) {
       this.onCreatedCallback(newVar);
     }
+  }
+
+  protected override onDispose(): void {
+    this.abortCtrl.abort();
+    this.overlay.remove();
   }
 }

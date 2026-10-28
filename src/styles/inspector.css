@@ -1,0 +1,513 @@
+/* ==========================================================================
+   4. 左状态侧边栏 & 5. 右检视器详情卡片样式 (inspector.css)
+   ========================================================================== */
+.panel-section {
+  padding: 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-item {
+  background: var(--bg-card);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.stat-val-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.hp-bar-wrap {
+  width: 100%;
+  height: 5px;
+  background: #374151;
+  border-radius: 3px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.hp-bar-fill {
+  height: 100%;
+  background: #10b981;
+  transition: width 0.3s;
+}
+
+.stat-btn-group {
+  display: flex;
+  gap: 3px;
+}
+
+.stat-btn-group .mini-btn {
+  background: #374151;
+  border: none;
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.stat-btn-group .mini-btn:hover {
+  background: #4b5563;
+}
+
+.party-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.party-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.party-item.active {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+}
+
+/* 切换开关 Switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 18px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #4b5563;
+  transition: .3s;
+  border-radius: 18px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #10b981;
+}
+
+input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+.items-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.item-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.item-badge.owned {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.achievement-item {
+  padding: 7px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ach-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ach-badge.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.ach-badge.failed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.log-box {
+  background: #090d16;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 8px;
+  height: 140px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 11px;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-entry {
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.log-entry.highlight {
+  color: #38bdf8;
+}
+
+/* ==========================================================================
+   ActionSequence 详情卡片 (Right Sidebar Details)
+   ========================================================================== */
+.inspector-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.event-type-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.cell-step-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.edge-info-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.inspector-scroll-container input[type="text"],
+.inspector-scroll-container input[type="number"],
+.inspector-scroll-container select,
+.inspector-scroll-container textarea,
+.dark-input,
+.inspector-input,
+.inspector-textarea {
+  background: #0b0d17 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+  border-radius: 6px !important;
+  padding: 6px 8px !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.inspector-scroll-container input[type="text"]:focus,
+.inspector-scroll-container input[type="number"]:focus,
+.inspector-scroll-container select:focus,
+.inspector-scroll-container textarea:focus,
+.dark-input:focus,
+.inspector-input:focus,
+.inspector-textarea:focus {
+  border-color: #7c3aed !important;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.35) !important;
+  background: #141829 !important;
+}
+
+.inspector-input {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+}
+
+.inspector-textarea {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  resize: vertical;
+  min-height: 52px;
+}
+
+.inspector-scroll-container select {
+  cursor: pointer;
+}
+
+.mini-btn,
+.mini-btn-action,
+.btn-xs,
+.step-add-pill,
+.btn-del-branch,
+.btn-del-step,
+.btn-view-var {
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+}
+
+.mini-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.mini-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.mini-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mini-btn-action {
+  background: #1e293b;
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-btn-action:hover {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.5);
+}
+
+.danger-btn {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171 !important;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  transition: all 0.15s ease;
+}
+
+.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.28) !important;
+  border-color: rgba(239, 68, 68, 0.65) !important;
+  color: #fca5a5 !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+}
+
+.step-add-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.step-add-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  color: var(--text-sub);
+  border-radius: 6px;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.step-add-pill:hover {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: #7c3aed;
+  border-style: solid;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.3);
+}
+
+.branch-card {
+  background: #111422 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  margin-bottom: 10px !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.branch-card.active-branch {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2) !important;
+}
+
+.step-card {
+  background: #0b0d17 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 6px !important;
+  padding: 10px !important;
+  margin-top: 8px !important;
+}
+
+.btn-node-delete {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.2;
+  transition: all 0.15s ease;
+  user-select: none;
+  width: auto !important;
+  height: auto !important;
+}
+
+.btn-node-delete:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-node-delete:active {
+  transform: translateY(0);
+  background: rgba(239, 68, 68, 0.35);
+}
+
+.btn-node-delete svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+  transition: transform 0.15s ease;
+}
+
+.btn-node-delete:hover svg {
+  transform: rotate(-10deg);
+}
+
+.disabled-btn {
+  background: #1e293b;
+  color: #64748b;
+  cursor: not-allowed;
+  border-color: #334155;
+}
+
+.entity-rel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rel-dialog-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: all 0.2s;
+}
+
+.rel-dialog-card:hover {
+  border-color: #60a5fa;
+  background: #131c2e;
+}
+
+.party-item:hover, .item-badge:hover, .achievement-item:hover {
+  border-color: #60a5fa !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
