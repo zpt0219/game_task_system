@@ -40,6 +40,8 @@ export interface ConditionDef {
   y: number;
   match: 'all' | 'any';
   conds: CmpCond[];
+  portSide?: 'left' | 'right' | 'top' | 'bottom';
+  portOffsetRatio?: number;
 }
 
 export type ButtonStyle = 'primary' | 'secondary' | 'danger';

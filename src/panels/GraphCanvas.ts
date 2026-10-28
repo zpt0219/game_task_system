@@ -33,6 +33,9 @@ interface ActiveWireDrag {
   snappedPortSide?: 'left' | 'right' | 'top' | 'bottom';
   reconnectFromTargetId?: string;
   reconnectPortEl?: HTMLElement;
+  isSlidingConditionPort?: boolean;
+  slidingCondSide?: 'left' | 'right' | 'top' | 'bottom';
+  slidingCondRatio?: number;
 }
 
 export class GraphCanvas {
@@ -313,21 +316,18 @@ export class GraphCanvas {
       el.style.left = `${cond.x}px`;
       el.style.top = `${cond.y}px`;
       el.innerHTML = `
-        <div class="node-port port-out port-out-left" data-tid="${cond.id}" data-side="left" title="【输出端点】向左拖出依赖连线"></div>
         <div class="cond-status-led"></div>
         <div class="node-title">${this.escape(cond.title)}</div>
-        <div class="node-port port-out port-out-right" data-tid="${cond.id}" data-side="right" title="【输出端点】向右拖出依赖连线"></div>
+        <div class="node-port port-out" data-tid="${cond.id}" title="【输出端点】\n• 沿卡片边缘拖拽可调整出口位置\n• 拖离卡片可拉出依赖连线"></div>
       `;
-      el.querySelectorAll('.port-out').forEach((pEl) => {
-        const portOut = pEl as HTMLElement;
-        portOut.addEventListener('pointerdown', (e) => {
-          this.handlePortPointerDown(e, portOut, {
-            mode: 'main',
-            sourceId: cond.id
-          });
+      const portOut = el.querySelector('.port-out') as HTMLElement | null;
+      portOut?.addEventListener('pointerdown', (e) => {
+        this.handlePortPointerDown(e, portOut, {
+          mode: 'main',
+          sourceId: cond.id
         });
-        portOut.addEventListener('click', (e) => e.stopPropagation());
       });
+      portOut?.addEventListener('click', (e) => e.stopPropagation());
       this.attachNodeInteraction(el, 'condition', cond.id);
       this.nodesContainer.appendChild(el);
     });
@@ -409,7 +409,8 @@ export class GraphCanvas {
       this.nodesContainer.appendChild(el);
     });
 
-    // 动态计算并吸附各 Event 端口位置
+    // 动态计算并吸附各 Condition 与 Event 端口位置
+    this.updateAllConditionPortsPlacement();
     p.events.forEach((ev) => this.updateEventPortsPlacement(ev.id));
 
     this.renderEdges(appState.getState());
@@ -519,6 +520,84 @@ export class GraphCanvas {
   private updateAllEventPortsPlacement(): void {
     const p = project.get();
     p.events.forEach((ev) => this.updateEventPortsPlacement(ev.id));
+  }
+
+  /** 获取某个 Condition 节点的输出端点应吸附的侧边与比例 */
+  private getConditionPortSide(
+    cond: ConditionDef,
+    p: ProjectData
+  ): { side: 'left' | 'right' | 'top' | 'bottom'; ratio: number } {
+    if (cond.portSide) {
+      return { side: cond.portSide, ratio: cond.portOffsetRatio ?? 0.5 };
+    }
+
+    // 若未显式自定义，根据其依赖的 Event 节点的平均相对方位决定默认侧边
+    const depEvents = p.events.filter((ev) => ev.incomingConditions?.includes(cond.id));
+    if (depEvents.length === 0) {
+      return { side: 'right', ratio: 0.5 };
+    }
+
+    const avgX = depEvents.reduce((s, e) => s + e.x, 0) / depEvents.length;
+    const avgY = depEvents.reduce((s, e) => s + e.y, 0) / depEvents.length;
+    const condCenterX = cond.x + 90;
+    const condCenterY = cond.y + 19;
+
+    const dx = avgX - condCenterX;
+    const dy = avgY - condCenterY;
+
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return { side: dx >= 0 ? 'right' : 'left', ratio: 0.5 };
+    } else {
+      return { side: dy >= 0 ? 'bottom' : 'top', ratio: 0.5 };
+    }
+  }
+
+  /** 更新单个 Condition 节点的单一输出端口位置 */
+  private updateConditionPortPlacement(condId: string): void {
+    const condEl = document.getElementById(`node-${condId}`);
+    if (!condEl) return;
+    const cond = project.getCondition(condId);
+    if (!cond) return;
+
+    const portEl = condEl.querySelector('.port-out') as HTMLElement | null;
+    if (!portEl) return;
+
+    const p = project.get();
+    const { side, ratio } = this.getConditionPortSide(cond, p);
+    const pct = Math.round(ratio * 100);
+
+    if (side === 'right') {
+      portEl.style.left = 'auto';
+      portEl.style.right = '-7px';
+      portEl.style.top = `${pct}%`;
+      portEl.style.bottom = 'auto';
+      portEl.style.transform = 'translateY(-50%)';
+    } else if (side === 'left') {
+      portEl.style.left = '-7px';
+      portEl.style.right = 'auto';
+      portEl.style.top = `${pct}%`;
+      portEl.style.bottom = 'auto';
+      portEl.style.transform = 'translateY(-50%)';
+    } else if (side === 'top') {
+      portEl.style.left = `${pct}%`;
+      portEl.style.right = 'auto';
+      portEl.style.top = '-7px';
+      portEl.style.bottom = 'auto';
+      portEl.style.transform = 'translateX(-50%)';
+    } else {
+      portEl.style.left = `${pct}%`;
+      portEl.style.right = 'auto';
+      portEl.style.top = 'auto';
+      portEl.style.bottom = '-7px';
+      portEl.style.transform = 'translateX(-50%)';
+    }
+    portEl.dataset.side = side;
+  }
+
+  /** 更新全部 Condition 节点的输出端点位置 */
+  private updateAllConditionPortsPlacement(): void {
+    const p = project.get();
+    p.conditions.forEach((c) => this.updateConditionPortPlacement(c.id));
   }
 
   // ------------------------------------------------------------------ DOM 重建 (Focal)
@@ -1323,6 +1402,7 @@ export class GraphCanvas {
         el.style.left = `${newX}px`;
         el.style.top = `${newY}px`;
         if (this.viewMode === 'main') {
+          this.updateAllConditionPortsPlacement();
           this.updateAllEventPortsPlacement();
         }
         this.renderEdges(appState.getState());
@@ -1332,6 +1412,7 @@ export class GraphCanvas {
         if (this.draggingNodeId === id) {
           this.draggingNodeId = null;
           if (this.viewMode === 'main') {
+            this.updateAllConditionPortsPlacement();
             this.updateAllEventPortsPlacement();
             this.renderEdges(appState.getState());
           }
@@ -1436,16 +1517,13 @@ export class GraphCanvas {
       path.setAttribute('marker-end', 'url(#arrow-focal)');
     }
 
-    // 在全局大图模式下，根据当前光标位于 Condition 的左侧还是右侧，动态切换 Condition 的起线端口
+    // 在全局大图模式下，更新 Condition 唯一出口端口起线坐标
     if (this.activeWire.mode === 'main') {
       const condEl = document.getElementById(`node-${this.activeWire.sourceId}`);
       if (condEl) {
-        const leftPort = condEl.querySelector('.port-out[data-side="left"]') as HTMLElement | null;
-        const rightPort = condEl.querySelector('.port-out[data-side="right"]') as HTMLElement | null;
-        const condCenterX = condEl.offsetLeft + condEl.offsetWidth / 2;
-        const chosenPort = x2 < condCenterX ? leftPort || rightPort : rightPort || leftPort;
-        if (chosenPort) {
-          const pos = this.getPortCanvasPos(chosenPort);
+        const portEl = condEl.querySelector('.port-out') as HTMLElement | null;
+        if (portEl) {
+          const pos = this.getPortCanvasPos(portEl);
           x1 = pos.x;
           y1 = pos.y;
         }
@@ -1454,48 +1532,164 @@ export class GraphCanvas {
 
     let cx1: number, cy1: number, cx2: number, cy2: number;
     const snapSide = this.activeWire.snappedPortSide;
+    const outSide = this.activeWire.sourcePortEl?.dataset.side || (x2 >= x1 ? 'right' : 'left');
+    const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
+    const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
+
+    if (outSide === 'right') {
+      cx1 = x1 + dx;
+      cy1 = y1;
+    } else if (outSide === 'left') {
+      cx1 = x1 - dx;
+      cy1 = y1;
+    } else if (outSide === 'top') {
+      cx1 = x1;
+      cy1 = y1 - dy;
+    } else {
+      cx1 = x1;
+      cy1 = y1 + dy;
+    }
 
     if (snapSide === 'top') {
-      const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
-      cx1 = x1 + (x2 >= x1 ? 30 : -30);
-      cy1 = y1;
       cx2 = x2;
       cy2 = y2 - dy;
     } else if (snapSide === 'bottom') {
-      const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
-      cx1 = x1 + (x2 >= x1 ? 30 : -30);
-      cy1 = y1;
       cx2 = x2;
       cy2 = y2 + dy;
     } else if (snapSide === 'right') {
-      const dx = Math.max(Math.abs(x1 - x2) * 0.45, 40);
-      cx1 = x2 < x1 ? x1 - dx : x1 + dx;
-      cy1 = y1;
       cx2 = x2 + dx;
       cy2 = y2;
     } else if (snapSide === 'left') {
-      const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
-      cx1 = x2 < x1 ? x1 - dx : x1 + dx;
-      cy1 = y1;
       cx2 = x2 - dx;
       cy2 = y2;
     } else if (x2 >= x1) {
-      const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
-      cx1 = x1 + dx;
-      cy1 = y1;
       cx2 = x2 - dx;
       cy2 = y2;
     } else {
-      // 向左侧目标连线：从端口向左平滑引出并向左接入目标，避免回环
-      const dx = Math.max(Math.abs(x1 - x2) * 0.45, 40);
-      cx1 = x1 - dx;
-      cy1 = y1;
       cx2 = x2 + dx;
       cy2 = y2;
     }
 
     path.setAttribute('d', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
     path.style.display = 'block';
+  }
+
+  /**
+   * 当用户在 Condition 节点的唯一样式端点上按住拖动时，
+   * 只要在 Condition 卡片附近 (dist <= 55)，端点沿四边平滑滑行调整位置（不是取消连线）；
+   * 所有已有的引出连线实时跟随该端点滑行。
+   */
+  private updateSlidingConditionPort(
+    cPos: { x: number; y: number }
+  ): boolean {
+    if (!this.activeWire || this.activeWire.mode !== 'main' || this.activeWire.reconnectFromTargetId) {
+      return false;
+    }
+
+    const condId = this.activeWire.sourceId;
+    const cond = project.getCondition(condId);
+    const condEl = document.getElementById(`node-${condId}`);
+    const portEl = this.activeWire.sourcePortEl;
+
+    if (!cond || !condEl || !portEl) return false;
+
+    const condW = condEl.offsetWidth || 180;
+    const condH = condEl.offsetHeight || 38;
+    const left = cond.x;
+    const top = cond.y;
+    const right = left + condW;
+    const bottom = top + condH;
+
+    const dx = Math.max(left - cPos.x, 0, cPos.x - right);
+    const dy = Math.max(top - cPos.y, 0, cPos.y - bottom);
+    const distToCard = Math.hypot(dx, dy);
+
+    if (distToCard <= 55) {
+      // 处于卡片边缘滑行范围内：调整端点位置，不取消连线，不拉出飞线
+      this.activeWire.isSlidingConditionPort = true;
+
+      // 投影至卡片四条边缘
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      const nx = (cPos.x - cx) / (condW / 2);
+      const ny = (cPos.y - cy) / (condH / 2);
+
+      let slideSide: 'left' | 'right' | 'top' | 'bottom';
+      let slideX: number;
+      let slideY: number;
+      let slideRatio = 0.5;
+
+      if (Math.abs(nx) >= Math.abs(ny)) {
+        if (nx >= 0) {
+          slideSide = 'right';
+          slideX = right;
+          slideY = Math.max(top + 8, Math.min(bottom - 8, cPos.y));
+          slideRatio = condH > 16 ? (slideY - top) / condH : 0.5;
+        } else {
+          slideSide = 'left';
+          slideX = left;
+          slideY = Math.max(top + 8, Math.min(bottom - 8, cPos.y));
+          slideRatio = condH > 16 ? (slideY - top) / condH : 0.5;
+        }
+      } else {
+        if (ny >= 0) {
+          slideSide = 'bottom';
+          slideX = Math.max(left + 12, Math.min(right - 12, cPos.x));
+          slideY = bottom;
+          slideRatio = condW > 24 ? (slideX - left) / condW : 0.5;
+        } else {
+          slideSide = 'top';
+          slideX = Math.max(left + 12, Math.min(right - 12, cPos.x));
+          slideY = top;
+          slideRatio = condW > 24 ? (slideX - left) / condW : 0.5;
+        }
+      }
+
+      // 实时动态更新 Condition 出端点 DOM 位置
+      if (slideSide === 'right') {
+        portEl.style.left = 'auto';
+        portEl.style.right = '-7px';
+        portEl.style.top = `${slideY - top}px`;
+        portEl.style.bottom = 'auto';
+        portEl.style.transform = 'translateY(-50%)';
+      } else if (slideSide === 'left') {
+        portEl.style.left = '-7px';
+        portEl.style.right = 'auto';
+        portEl.style.top = `${slideY - top}px`;
+        portEl.style.bottom = 'auto';
+        portEl.style.transform = 'translateY(-50%)';
+      } else if (slideSide === 'top') {
+        portEl.style.left = `${slideX - left}px`;
+        portEl.style.right = 'auto';
+        portEl.style.top = '-7px';
+        portEl.style.bottom = 'auto';
+        portEl.style.transform = 'translateX(-50%)';
+      } else {
+        portEl.style.left = `${slideX - left}px`;
+        portEl.style.right = 'auto';
+        portEl.style.top = 'auto';
+        portEl.style.bottom = '-7px';
+        portEl.style.transform = 'translateX(-50%)';
+      }
+      portEl.dataset.side = slideSide;
+      portEl.classList.add('port-active');
+
+      this.activeWire.slidingCondSide = slideSide;
+      this.activeWire.slidingCondRatio = slideRatio;
+
+      // 隐藏临时橡皮筋飞线
+      if (this.rubberbandPath) {
+        this.rubberbandPath.style.display = 'none';
+      }
+
+      // 实时重绘从当前端口出发的所有既有连线，使连线跟随端点平滑滑行！
+      this.renderEdges(appState.getState());
+      return true;
+    } else {
+      // 远离卡片 (> 55px)：脱离滑行模式，切换为向外拖拽建立新连线
+      this.activeWire.isSlidingConditionPort = false;
+      return false;
+    }
   }
 
   /**
@@ -1820,10 +2014,17 @@ export class GraphCanvas {
 
       if (this.activeWire.reconnectFromTargetId) {
         this.updateSlidingWire(moveEv.clientX, moveEv.clientY, cPos);
+        this.updateRubberbandWire();
+      } else if (this.activeWire.mode === 'main') {
+        const isSliding = this.updateSlidingConditionPort(cPos);
+        if (!isSliding) {
+          this.checkMagnetSnapping(moveEv.clientX, moveEv.clientY, cPos);
+          this.updateRubberbandWire();
+        }
       } else {
         this.checkMagnetSnapping(moveEv.clientX, moveEv.clientY, cPos);
+        this.updateRubberbandWire();
       }
-      this.updateRubberbandWire();
     };
 
     const onPointerUp = (upEv: PointerEvent) => {
@@ -1892,6 +2093,27 @@ export class GraphCanvas {
               true
             );
           }
+          return;
+        }
+
+        // Condition 唯一输出端点滑行模式松开：换个位置，保留全部既有连线！
+        if (wire.isSlidingConditionPort && wire.mode === 'main') {
+          const condId = wire.sourceId;
+          const targetSide = wire.slidingCondSide || 'right';
+          const targetRatio = wire.slidingCondRatio ?? 0.5;
+
+          project.change((d) => {
+            const c = d.conditions.find((x) => x.id === condId);
+            if (c) {
+              c.portSide = targetSide;
+              c.portOffsetRatio = targetRatio;
+            }
+          }, 'structure');
+
+          const cond = project.getCondition(condId);
+          appState.log(`📍 已将 Condition [${cond?.title || condId}] 的出口端点移至 [${targetSide}]（保留全部依赖）`, true);
+          this.cancelActiveWire();
+          this.renderEdges(appState.getState());
           return;
         }
 
@@ -1985,16 +2207,7 @@ export class GraphCanvas {
             cleanupWait();
 
             const condEl = document.getElementById(`node-${condId}`);
-            const condPos = project.getCondition(condId);
-            const mouseCanvasPos = this.clientToCanvasPos(moveEv.clientX, moveEv.clientY);
-            const portOutLeft = condEl?.querySelector('.port-out[data-side="left"]') as HTMLElement | null;
-            const portOutRight = condEl?.querySelector('.port-out[data-side="right"]') as HTMLElement | null;
-            let condPortOut: HTMLElement | null = null;
-            if (condPos && mouseCanvasPos.x <= condPos.x + 20) {
-              condPortOut = portOutLeft || portOutRight;
-            } else {
-              condPortOut = portOutRight || portOutLeft;
-            }
+            const condPortOut = condEl?.querySelector('.port-out') as HTMLElement | null;
 
             if (condPortOut) {
               this.handlePortPointerDown(moveEv, condPortOut, {
@@ -2275,6 +2488,8 @@ export class GraphCanvas {
       }
       if (this.activeWire.reconnectFromTargetId) {
         this.updateEventPortsPlacement(this.activeWire.reconnectFromTargetId);
+      } else if (this.activeWire.mode === 'main') {
+        this.updateConditionPortPlacement(this.activeWire.sourceId);
       }
       this.activeWire = null;
     }
@@ -2480,16 +2695,8 @@ export class GraphCanvas {
         ? this.getPortCanvasPos(inPortEl)
         : { x: ev.x - 3, y: ev.y + (toEl.offsetHeight || 38) * 0.5 };
 
-      // 2. 根据目标位置动态选择 Condition 的左侧或右侧 Out 端口
-      const outPortLeft = fromEl.querySelector('.port-out[data-side="left"]') as HTMLElement | null;
-      const outPortRight = fromEl.querySelector('.port-out[data-side="right"]') as HTMLElement | null;
-      let outPortEl: HTMLElement | null = null;
-      if (p2.x <= cond.x + 20) {
-        outPortEl = outPortLeft || outPortRight;
-      } else {
-        outPortEl = outPortRight || outPortLeft;
-      }
-
+      // 2. Condition 唯一输出端口
+      const outPortEl = fromEl.querySelector('.port-out') as HTMLElement | null;
       const p1 = outPortEl
         ? this.getPortCanvasPos(outPortEl)
         : { x: cond.x + (fromEl.offsetWidth || 180), y: cond.y + (fromEl.offsetHeight || 38) * 0.5 };
@@ -2505,34 +2712,37 @@ export class GraphCanvas {
         ((sel.kind === 'condition' && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
 
       const inSide = inPortEl?.dataset.side || (x2 < x1 ? 'right' : 'left');
+      const outSide = outPortEl?.dataset.side || (x2 >= x1 ? 'right' : 'left');
 
-      let cx1: number, cy1: number, cx2: number, cy2: number;
-      if (inSide === 'right') {
-        // 从 Condition 左端口向左平滑引出，直接接入 Event 右侧专属 In 端口 (彻底消除回绕！)
-        const dx = Math.max(Math.abs(x1 - x2) * 0.45, 40);
+      const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
+      const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
+
+      let cx1: number, cy1: number;
+      if (outSide === 'right') {
+        cx1 = x1 + dx;
+        cy1 = y1;
+      } else if (outSide === 'left') {
         cx1 = x1 - dx;
         cy1 = y1;
+      } else if (outSide === 'top') {
+        cx1 = x1;
+        cy1 = y1 - dy;
+      } else {
+        cx1 = x1;
+        cy1 = y1 + dy;
+      }
+
+      let cx2: number, cy2: number;
+      if (inSide === 'right') {
         cx2 = x2 + dx;
         cy2 = y2;
       } else if (inSide === 'left') {
-        // 从 Condition 右端口向右平滑引出，常规正向接入 Event 左侧专属 In 端口
-        const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
-        cx1 = x1 + dx;
-        cy1 = y1;
         cx2 = x2 - dx;
         cy2 = y2;
       } else if (inSide === 'top') {
-        // 从上方垂直接入 Event 顶部专属 In 端口
-        const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
-        cx1 = x1 + (x2 >= x1 ? 30 : -30);
-        cy1 = y1;
         cx2 = x2;
         cy2 = y2 - dy;
       } else {
-        // 从下方垂直接入 Event 底部专属 In 端口
-        const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
-        cx1 = x1 + (x2 >= x1 ? 30 : -30);
-        cy1 = y1;
         cx2 = x2;
         cy2 = y2 + dy;
       }

@@ -1648,6 +1648,20 @@ input:checked + .slider:before {
   top: 50%;
   transform: translateY(-50%);
 }
+.port-out[data-side="top"] {
+  top: -7px !important;
+  bottom: auto !important;
+  left: 50%;
+  right: auto !important;
+  transform: translateX(-50%);
+}
+.port-out[data-side="bottom"] {
+  bottom: -7px !important;
+  top: auto !important;
+  left: 50%;
+  right: auto !important;
+  transform: translateX(-50%);
+}
 .port-in {
   left: -7px;
   border-color: #10b981;
