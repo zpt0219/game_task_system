@@ -1,6 +1,7 @@
 import { project, SaveStatus } from '../core/project';
 import { appState, buildInitialState } from '../core/state';
 import { GraphCanvas } from './GraphCanvas';
+import { RegisterVarModal } from './RegisterVarModal';
 
 export class Header {
   private playBtn: HTMLButtonElement;
@@ -131,6 +132,13 @@ export class Header {
     // 绑定 Event / Condition 的按住拖拽生成与快捷点击创建
     this.setupNodeDragCreation(this.addEventBtn, 'event');
     this.setupNodeDragCreation(this.addConditionBtn, 'condition');
+
+    const addVarBtn = document.getElementById('btnAddVarHeader') as HTMLButtonElement | null;
+    if (addVarBtn) {
+      addVarBtn.onclick = () => {
+        RegisterVarModal.open();
+      };
+    }
 
     // 绑定 Action Tree 子图节点的按住拖拽生成与快捷点击创建
     if (this.addActionBtn) this.setupSubNodeDragCreation(this.addActionBtn, 'action');

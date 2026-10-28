@@ -3,6 +3,7 @@ import {
   EventDef,
   ConditionDef,
   VarDef,
+  VarCategory,
   ActionGraphNodeUnion,
   StartGraphNode,
   SelectorGraphNode,
@@ -1667,55 +1668,161 @@ export class NodeInspector {
     const val = state[v.key];
     const writers = varWriters(p, v.key);
     const readers = varReaders(p, v.key);
+    const isEdit = appState.getMode() === 'edit';
+
+    const catNameMap: Record<string, string> = {
+      party: '👥 人物 (Party)',
+      item: '🎒 道具 (Item)',
+      teleport: '🗽 传送点 (Teleport)',
+      achievement: '🏆 成就 (Achievement)',
+      flag: '🚩 标记 (Flag)'
+    };
+    const catTitle = catNameMap[v.category] || v.category;
 
     const card = document.createElement('div');
     card.className = 'inspector-section';
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span class="event-type-badge" style="background:#065f46; color:#a7f3d0;">道具 / 状态变量</span>
-        <span class="event-status-pill status-blue">当前值: ${val === undefined ? '∅' : String(val)}</span>
-      </div>
 
-      <div style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px;">
-        ${v.icon} ${this.escape(v.label)}
-      </div>
-      <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-bottom: 8px;">
-        key: ${v.key} · 类型: ${v.kind}
-      </div>
-      <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;">
-        ${this.escape(v.desc || '该变量由游戏内 Event 执行改变，并在 Condition 条件中被读取。')}
-      </div>
+    if (isEdit) {
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span class="event-type-badge" style="background:#065f46; color:#a7f3d0;">${catTitle}</span>
+          <span class="event-status-pill status-blue">当前值: ${val === undefined ? '∅' : String(val)}</span>
+        </div>
 
-      <button id="btnOpenFocal" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px; margin-bottom: 12px;">
-        <span>🔍</span> 在画布查看此实体的专属因果图谱
-      </button>
+        <div class="inspector-field">
+          <label class="inspector-label">实体名称与图标</label>
+          <div style="display: flex; gap: 8px;">
+            <input id="editVarIcon" class="inspector-input" style="width: 48px; text-align: center; font-size: 18px; padding: 4px;" value="${v.icon}" />
+            <input id="editVarLabel" class="inspector-input" style="flex: 1; font-weight: 600;" value="${this.escape(v.label)}" />
+          </div>
+        </div>
 
-      <div class="inspector-label" style="color: #10b981;">
-        📥 改变此项的 Event (入边: ${writers.length} 个)
-      </div>
-      <div style="margin-bottom: 12px;">
-        ${
-          writers.length === 0
-            ? '<div style="font-size: 11px; color: #64748b;">初始固有 / 无 Event 写入</div>'
-            : writers
-                .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#6ee7b7;">• ${ev.title}</div>`)
-                .join('')
-        }
-      </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div class="inspector-field">
+            <label class="inspector-label">变量分类</label>
+            <select id="editVarCategory" class="inspector-select">
+              <option value="party" ${v.category === 'party' ? 'selected' : ''}>👥 人物 (Party)</option>
+              <option value="item" ${v.category === 'item' ? 'selected' : ''}>🎒 道具 (Item)</option>
+              <option value="teleport" ${v.category === 'teleport' ? 'selected' : ''}>🗽 传送点 (Teleport)</option>
+              <option value="achievement" ${v.category === 'achievement' ? 'selected' : ''}>🏆 成就 (Achievement)</option>
+              <option value="flag" ${v.category === 'flag' ? 'selected' : ''}>🚩 标记 (Flag)</option>
+            </select>
+          </div>
+          <div class="inspector-field">
+            <label class="inspector-label">标识键名 (Key)</label>
+            <input class="inspector-input" style="font-family: monospace; font-size: 11px; background:#1e293b; color:#94a3b8;" value="${v.key}" readonly />
+          </div>
+        </div>
 
-      <div class="inspector-label" style="color: #38bdf8;">
-        📤 受此项影响的 Event (出边: ${readers.length} 个)
-      </div>
-      <div>
-        ${
-          readers.length === 0
-            ? '<div style="font-size: 11px; color: #64748b;">无后续 Event 消费此项</div>'
-            : readers
-                .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#7dd3fc;">• ${ev.title}</div>`)
-                .join('')
-        }
-      </div>
-    `;
+        <div class="inspector-field">
+          <label class="inspector-label">描述说明 (Description)</label>
+          <textarea id="editVarDesc" class="inspector-textarea" rows="3" placeholder="描述此实体的用途、获取途径与前置依赖...">${this.escape(v.desc || '')}</textarea>
+        </div>
+
+        <button id="btnOpenFocal" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px; margin-bottom: 12px;">
+          <span>🔍</span> 在画布查看此实体的专属因果图谱
+        </button>
+
+        <div class="inspector-label" style="color: #10b981;">
+          📥 改变此项的 Event (入边: ${writers.length} 个)
+        </div>
+        <div style="margin-bottom: 12px;">
+          ${
+            writers.length === 0
+              ? '<div style="font-size: 11px; color: #64748b;">初始固有 / 无 Event 写入</div>'
+              : writers
+                  .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#6ee7b7;">• ${ev.title}</div>`)
+                  .join('')
+          }
+        </div>
+
+        <div class="inspector-label" style="color: #38bdf8;">
+          📤 受此项影响的 Event (出边: ${readers.length} 个)
+        </div>
+        <div>
+          ${
+            readers.length === 0
+              ? '<div style="font-size: 11px; color: #64748b;">无后续 Event 消费此项</div>'
+              : readers
+                  .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#7dd3fc;">• ${ev.title}</div>`)
+                  .join('')
+          }
+        </div>
+      `;
+
+      this.bindInput(card, '#editVarLabel', (val) => {
+        project.change((d) => {
+          const target = d.vars.find((x) => x.key === v.key);
+          if (target) target.label = val.trim() || '未命名实体';
+        }, 'field', `var_label_${v.key}`);
+      });
+      this.bindInput(card, '#editVarIcon', (val) => {
+        project.change((d) => {
+          const target = d.vars.find((x) => x.key === v.key);
+          if (target) target.icon = val.trim() || '🔹';
+        }, 'field', `var_icon_${v.key}`);
+      });
+      this.bindInput(card, '#editVarDesc', (val) => {
+        project.change((d) => {
+          const target = d.vars.find((x) => x.key === v.key);
+          if (target) target.desc = val.trim();
+        }, 'field', `var_desc_${v.key}`);
+      });
+      card.querySelector('#editVarCategory')?.addEventListener('change', (e) => {
+        const newCat = (e.target as HTMLSelectElement).value as VarCategory;
+        project.change((d) => {
+          const target = d.vars.find((x) => x.key === v.key);
+          if (target) target.category = newCat;
+        }, 'structure');
+      });
+    } else {
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span class="event-type-badge" style="background:#065f46; color:#a7f3d0;">${catTitle}</span>
+          <span class="event-status-pill status-blue">当前值: ${val === undefined ? '∅' : String(val)}</span>
+        </div>
+
+        <div style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px;">
+          ${v.icon} ${this.escape(v.label)}
+        </div>
+        <div style="font-size: 11px; color: #64748b; font-family: monospace; margin-bottom: 8px;">
+          key: ${v.key} · 类型: ${v.kind}
+        </div>
+        <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; margin-bottom: 12px;">
+          ${this.escape(v.desc || '该变量由游戏内 Event 执行改变，并在 Condition 条件中被读取。')}
+        </div>
+
+        <button id="btnOpenFocal" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px; margin-bottom: 12px;">
+          <span>🔍</span> 在画布查看此实体的专属因果图谱
+        </button>
+
+        <div class="inspector-label" style="color: #10b981;">
+          📥 改变此项的 Event (入边: ${writers.length} 个)
+        </div>
+        <div style="margin-bottom: 12px;">
+          ${
+            writers.length === 0
+              ? '<div style="font-size: 11px; color: #64748b;">初始固有 / 无 Event 写入</div>'
+              : writers
+                  .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#6ee7b7;">• ${ev.title}</div>`)
+                  .join('')
+          }
+        </div>
+
+        <div class="inspector-label" style="color: #38bdf8;">
+          📤 受此项影响的 Event (出边: ${readers.length} 个)
+        </div>
+        <div>
+          ${
+            readers.length === 0
+              ? '<div style="font-size: 11px; color: #64748b;">无后续 Event 消费此项</div>'
+              : readers
+                  .map((ev) => `<div style="background:#0f172a; padding:4px 8px; border-radius:4px; font-size:11px; margin-bottom:3px; color:#7dd3fc;">• ${ev.title}</div>`)
+                  .join('')
+          }
+        </div>
+      `;
+    }
     this.container.appendChild(card);
 
     card.querySelector('#btnOpenFocal')?.addEventListener('click', () => {

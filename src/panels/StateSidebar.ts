@@ -1,5 +1,6 @@
 import { project } from '../core/project';
 import { appState } from '../core/state';
+import { RegisterVarModal } from './RegisterVarModal';
 
 export class StateSidebar {
   private container: HTMLElement;
@@ -225,7 +226,7 @@ export class StateSidebar {
         <!-- 编辑模式：添加新变量 -->
         <section class="panel-section" style="border: 1px dashed #38bdf8;">
           <button id="btnAddVar" class="mini-btn-action" style="width: 100%; padding: 6px; font-size: 11px;">
-            + 注册新状态变量 / 道具
+            + 注册新变量 (人物 / 道具 / 传送点 / 成就)
           </button>
         </section>
       `
@@ -293,9 +294,7 @@ export class StateSidebar {
 
     // 编辑模式添加变量
     this.container.querySelector('#btnAddVar')?.addEventListener('click', () => {
-      const v = project.addVar();
-      appState.select({ kind: 'var', id: v.key });
-      appState.log(`✨ 已注册新变量：[${v.label}]`, true);
+      RegisterVarModal.open();
     });
   }
 

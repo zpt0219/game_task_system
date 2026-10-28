@@ -425,17 +425,40 @@ class ProjectStore {
 
   // ------------------------------------------------------------------ 变量
 
-  public addVar(): VarDef {
-    let n = 1;
-    while (this.getVar(`flags.new_${n}`)) n++;
+  public addVar(def?: Partial<VarDef>): VarDef {
+    let key = def?.key;
+    if (!key) {
+      const prefix =
+        def?.category === 'party'
+          ? 'party.'
+          : def?.category === 'item'
+          ? 'items.'
+          : def?.category === 'teleport'
+          ? 'teleports.'
+          : def?.category === 'achievement'
+          ? 'achievements.'
+          : 'flags.';
+      let n = 1;
+      while (this.getVar(`${prefix}new_${n}`)) n++;
+      key = `${prefix}new_${n}`;
+    }
     const v: VarDef = {
-      key: `flags.new_${n}`,
-      label: `新变量 ${n}`,
-      icon: '🔹',
-      category: 'item',
-      kind: 'bool',
-      initial: false,
-      desc: ''
+      key,
+      label: def?.label || `新变量`,
+      icon:
+        def?.icon ||
+        (def?.category === 'party'
+          ? '👸'
+          : def?.category === 'teleport'
+          ? '🗽'
+          : def?.category === 'achievement'
+          ? '🏆'
+          : '🎒'),
+      category: def?.category || 'item',
+      kind: def?.kind || (def?.category === 'achievement' ? 'enum' : 'bool'),
+      initial: def?.initial !== undefined ? def.initial : def?.category === 'achievement' ? 'active' : false,
+      desc: def?.desc || '',
+      options: def?.options || (def?.category === 'achievement' ? ['active', 'failed'] : undefined)
     };
     this.change((d) => d.vars.push(v), 'structure');
     return v;
