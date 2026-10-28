@@ -101,6 +101,40 @@ class AppState {
     this.selectionListeners.forEach((fn) => fn(sel));
   }
 
+  public selectMulti(items: Array<{ kind: 'event' | 'condition' | 'subnode'; id: string; eventId?: string }>): void {
+    if (items.length === 0) {
+      this.select(null);
+    } else if (items.length === 1) {
+      const it = items[0];
+      if (it.kind === 'subnode') {
+        this.select({ kind: 'subnode', id: it.id, eventId: it.eventId || '' });
+      } else {
+        this.select({ kind: it.kind, id: it.id });
+      }
+    } else {
+      this.select({ kind: 'multi', items });
+    }
+  }
+
+  public getSelectedNodeIds(): string[] {
+    if (!this.selection) return [];
+    if (this.selection.kind === 'multi') {
+      return this.selection.items.map((i) => i.id);
+    }
+    if ('id' in this.selection && this.selection.id) {
+      return [this.selection.id];
+    }
+    return [];
+  }
+
+  public isNodeSelected(id: string): boolean {
+    if (!this.selection) return false;
+    if (this.selection.kind === 'multi') {
+      return this.selection.items.some((it) => it.id === id);
+    }
+    return 'id' in this.selection && this.selection.id === id;
+  }
+
   public getFocalVar(): string | null {
     return this.focalVar;
   }

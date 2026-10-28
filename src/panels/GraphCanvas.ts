@@ -62,8 +62,6 @@ export class GraphCanvas {
   private draggingNodeId: string | null = null;
   private dragStartX = 0;
   private dragStartY = 0;
-  private nodeInitX = 0;
-  private nodeInitY = 0;
 
   private viewMode: 'main' | 'focal' | 'subgraph' = 'main';
   private focalVarKey: string | null = null;
@@ -92,6 +90,15 @@ export class GraphCanvas {
   private rubberbandPath: SVGPathElement | null = null;
   private dropMenuEl: HTMLElement | null = null;
   private suppressNextViewportClick = false;
+
+  // 框选与多选状态 (Marquee Selection)
+  private marqueeEl: HTMLElement | null = null;
+  private isBoxSelecting = false;
+  private hasMovedBoxSelect = false;
+  private boxSelectScreenStart = { x: 0, y: 0 };
+  private boxSelectStartCanvas = { x: 0, y: 0 };
+  private isSpacePressed = false;
+  private currentBoxSelectedItems: Array<{ kind: 'event' | 'condition' | 'subnode'; id: string; eventId?: string }> = [];
 
   constructor(private dialog: RpgDialog) {
     this.viewport = document.getElementById('graphViewport') as HTMLElement;
@@ -933,11 +940,37 @@ export class GraphCanvas {
       if ((e.target as HTMLElement).closest('.node-port')) return;
       e.stopPropagation();
       hasMoved = false;
+
+      const sel = appState.getSelection();
+      const isShiftOrCtrl = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      let dragItems: Array<{ id: string; initX: number; initY: number; el: HTMLElement }> = [];
+      const isCurrentInMulti = sel && sel.kind === 'multi' && sel.items.some((it) => it.id === node.id);
+
+      if (isCurrentInMulti) {
+        dragItems = sel.items
+          .filter((it) => it.kind === 'subnode')
+          .map((it) => {
+            const ev = project.getEvent(eventId);
+            const n = ev?.actionGraph?.nodes.find((x) => x.id === it.id);
+            const nEl = document.getElementById(`subnode-${it.id}`) || el;
+            return {
+              id: it.id,
+              initX: n ? n.x : 0,
+              initY: n ? n.y : 0,
+              el: nEl
+            };
+          });
+      } else {
+        if (!isShiftOrCtrl && (!sel || sel.kind !== 'subnode' || sel.id !== node.id)) {
+          appState.select({ kind: 'subnode', id: node.id, eventId });
+        }
+        dragItems = [{ id: node.id, initX: node.x, initY: node.y, el }];
+      }
+
       this.draggingNodeId = node.id;
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
-      this.nodeInitX = node.x;
-      this.nodeInitY = node.y;
 
       const onMouseMove = (moveEv: MouseEvent) => {
         if (this.draggingNodeId !== node.id) return;
@@ -946,24 +979,27 @@ export class GraphCanvas {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           hasMoved = true;
         }
-        const newX = Math.round(this.nodeInitX + dx);
-        const newY = Math.round(this.nodeInitY + dy);
 
         project.change(
           (d) => {
             const ev = d.events.find((x) => x.id === eventId);
-            const targetNode = ev?.actionGraph?.nodes.find((n) => n.id === node.id);
-            if (targetNode) {
-              targetNode.x = newX;
-              targetNode.y = newY;
-            }
+            if (!ev?.actionGraph) return;
+            dragItems.forEach((item) => {
+              const targetNode = ev.actionGraph!.nodes.find((n) => n.id === item.id);
+              if (targetNode) {
+                const newX = Math.round(item.initX + dx);
+                const newY = Math.round(item.initY + dy);
+                targetNode.x = newX;
+                targetNode.y = newY;
+                item.el.style.left = `${newX}px`;
+                item.el.style.top = `${newY}px`;
+              }
+            });
           },
           'drag',
-          `drag_subnode_${node.id}`
+          `drag_batch_subnodes`
         );
 
-        el.style.left = `${newX}px`;
-        el.style.top = `${newY}px`;
         this.renderEdges(appState.getState());
       };
 
@@ -996,6 +1032,31 @@ export class GraphCanvas {
 
       if (this.subConnectingSource && node.type !== 'start' && node.id !== this.subConnectingSource.nodeId) {
         this.completeSubConnecting(node.id);
+        return;
+      }
+
+      const isShiftOrCtrl = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (isShiftOrCtrl) {
+        const sel = appState.getSelection();
+        if (!sel) {
+          appState.select({ kind: 'subnode', id: node.id, eventId });
+        } else if (sel.kind === 'multi') {
+          const exists = sel.items.some((it) => it.id === node.id);
+          if (exists) {
+            appState.selectMulti(sel.items.filter((it) => it.id !== node.id));
+          } else {
+            appState.selectMulti([...sel.items, { kind: 'subnode', id: node.id, eventId }]);
+          }
+        } else if ('id' in sel && sel.id) {
+          if (sel.id === node.id) {
+            appState.select(null);
+          } else {
+            appState.selectMulti([
+              { kind: sel.kind as any, id: sel.id, eventId: (sel as any).eventId },
+              { kind: 'subnode', id: node.id, eventId }
+            ]);
+          }
+        }
         return;
       }
 
@@ -1284,7 +1345,8 @@ export class GraphCanvas {
         }
       }
 
-      const isHighlight = sel && sel.id && (sel.id === item.sourceNodeId || sel.id === item.targetNodeId);
+      const selectedIds = new Set(this.getSelectedNodeIds(sel));
+      const isHighlight = selectedIds.has(item.sourceNodeId) || selectedIds.has(item.targetNodeId);
 
       const targetNode = ev.actionGraph?.nodes.find((n) => n.id === item.targetNodeId);
       const defaultInfo = targetNode?.type === 'choice' ? ` [默认选项: ${item.defaultOptionIndex ?? 0}]` : '';
@@ -1363,13 +1425,38 @@ export class GraphCanvas {
       if ((e.target as HTMLElement).closest('.node-port')) return;
       e.stopPropagation();
       hasMoved = false;
+
+      const sel = appState.getSelection();
+      const isShiftOrCtrl = e.shiftKey || e.ctrlKey || e.metaKey;
+
+      let dragItems: Array<{ id: string; kind: 'event' | 'condition'; initX: number; initY: number; el: HTMLElement }> = [];
+      const isCurrentInMulti = sel && sel.kind === 'multi' && sel.items.some((it) => it.id === id);
+
+      if (isCurrentInMulti) {
+        dragItems = sel.items
+          .filter((it): it is { kind: 'event' | 'condition'; id: string } => it.kind === 'event' || it.kind === 'condition')
+          .map((it) => {
+            const pos = this.getNodePos(it.id);
+            const nodeEl = document.getElementById(`node-${it.id}`) || el;
+            return {
+              id: it.id,
+              kind: it.kind,
+              initX: pos.x,
+              initY: pos.y,
+              el: nodeEl
+            };
+          });
+      } else {
+        if (!isShiftOrCtrl && (!sel || sel.kind !== kind || sel.id !== id)) {
+          appState.select({ kind, id });
+        }
+        const pos = this.getNodePos(id);
+        dragItems = [{ id, kind, initX: pos.x, initY: pos.y, el }];
+      }
+
       this.draggingNodeId = id;
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
-
-      const pos = this.getNodePos(id);
-      this.nodeInitX = pos.x;
-      this.nodeInitY = pos.y;
 
       const onMouseMove = (moveEv: MouseEvent) => {
         if (this.draggingNodeId !== id) return;
@@ -1378,29 +1465,45 @@ export class GraphCanvas {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           hasMoved = true;
         }
-        const newX = Math.round(this.nodeInitX + dx);
-        const newY = Math.round(this.nodeInitY + dy);
 
         if (this.viewMode === 'focal') {
-          this.focalPositions[id] = { x: newX, y: newY };
+          dragItems.forEach((item) => {
+            const newX = Math.round(item.initX + dx);
+            const newY = Math.round(item.initY + dy);
+            this.focalPositions[item.id] = { x: newX, y: newY };
+            item.el.style.left = `${newX}px`;
+            item.el.style.top = `${newY}px`;
+          });
         } else {
           project.change(
             (d) => {
-              const node = kind === 'event'
-                ? d.events.find((x) => x.id === id)
-                : d.conditions.find((x: ConditionDef) => x.id === id);
-              if (node) {
-                node.x = newX;
-                node.y = newY;
-              }
+              dragItems.forEach((item) => {
+                const newX = Math.round(item.initX + dx);
+                const newY = Math.round(item.initY + dy);
+                if (item.kind === 'event') {
+                  const node = d.events.find((x) => x.id === item.id);
+                  if (node) {
+                    node.x = newX;
+                    node.y = newY;
+                  }
+                } else {
+                  const node = d.conditions.find((x: ConditionDef) => x.id === item.id);
+                  if (node) {
+                    node.x = newX;
+                    node.y = newY;
+                  }
+                }
+                item.el.style.left = `${newX}px`;
+                item.el.style.top = `${newY}px`;
+              });
             },
             'drag',
-            `drag_${id}`
+            `drag_batch_${dragItems.map((i) => i.id).join('_')}`
           );
         }
 
-        el.style.left = `${newX}px`;
-        el.style.top = `${newY}px`;
+        el.style.left = `${Math.round(dragItems[0]?.initX + dx)}px`;
+        el.style.top = `${Math.round(dragItems[0]?.initY + dy)}px`;
         if (this.viewMode === 'main') {
           this.updateAllConditionPortsPlacement();
           this.updateAllEventPortsPlacement();
@@ -1437,6 +1540,31 @@ export class GraphCanvas {
 
       if (this.connectingCondId && kind === 'event') {
         this.completeConnecting(id);
+        return;
+      }
+
+      const isShiftOrCtrl = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (isShiftOrCtrl) {
+        const sel = appState.getSelection();
+        if (!sel) {
+          appState.select({ kind, id });
+        } else if (sel.kind === 'multi') {
+          const exists = sel.items.some((it) => it.id === id);
+          if (exists) {
+            appState.selectMulti(sel.items.filter((it) => it.id !== id));
+          } else {
+            appState.selectMulti([...sel.items, { kind, id }]);
+          }
+        } else if ('id' in sel && sel.id) {
+          if (sel.id === id) {
+            appState.select(null);
+          } else {
+            appState.selectMulti([
+              { kind: sel.kind as any, id: sel.id },
+              { kind, id }
+            ]);
+          }
+        }
         return;
       }
 
@@ -2962,9 +3090,8 @@ export class GraphCanvas {
       const y2 = p2.y;
 
       const condActive = evalCondition(p, state, cond);
-      const isSelected =
-        sel &&
-        ((sel.kind === 'condition' && sel.id === edge.from) || (sel.kind === 'event' && sel.id === edge.to));
+      const selectedIds = new Set(this.getSelectedNodeIds(sel));
+      const isSelected = selectedIds.has(edge.from) || selectedIds.has(edge.to);
 
       const inSide = inPortEl?.dataset.side || (x2 < x1 ? 'right' : 'left');
       const outSide = outPortEl?.dataset.side || (x2 >= x1 ? 'right' : 'left');
@@ -3055,10 +3182,12 @@ export class GraphCanvas {
       const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
       const arch = isBoth ? -26 : 0;
 
+      const isHighlighted = this.isNodeSelectedInSelection(sel, ev.id) || (this.focalVarKey ? this.isNodeSelectedInSelection(sel, this.focalVarKey) : false);
+
       this.drawSvgPath({
         d: `M ${x1} ${y1} C ${x1 + dx} ${y1 + arch}, ${x2 - dx} ${y2 + arch}, ${x2} ${y2}`,
         active: true,
-        highlight: sel?.id === ev.id || sel?.id === this.focalVarKey,
+        highlight: isHighlighted,
         effect: true,
         title: `【入边】${ev.title} 改变了 ${this.focalVarKey}`
       });
@@ -3074,7 +3203,7 @@ export class GraphCanvas {
         this.drawSvgPath({
           d: `M ${bx1} ${by1} C ${bx1 - bdx} ${by1 + 26}, ${bx2 + bdx} ${by2 + 26}, ${bx2} ${by2}`,
           active: true,
-          highlight: sel?.id === ev.id || sel?.id === this.focalVarKey,
+          highlight: isHighlighted,
           title: `【出边】${this.focalVarKey} 影响了 ${ev.title}`
         });
       }
@@ -3092,10 +3221,12 @@ export class GraphCanvas {
       const y2 = evPos.y + (evEl.offsetHeight || 38) * 0.5;
       const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
 
+      const isHighlighted = this.isNodeSelectedInSelection(sel, ev.id) || (this.focalVarKey ? this.isNodeSelectedInSelection(sel, this.focalVarKey) : false);
+
       this.drawSvgPath({
         d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
         active: true,
-        highlight: sel?.id === ev.id || sel?.id === this.focalVarKey,
+        highlight: isHighlighted,
         title: `【出边】${this.focalVarKey} 影响了 ${ev.title}`
       });
     });
@@ -3234,12 +3365,27 @@ export class GraphCanvas {
 
   // ------------------------------------------------------------------ 选中高亮
 
+  private getSelectedNodeIds(sel: ReturnType<typeof appState.getSelection>): string[] {
+    if (!sel) return [];
+    if (sel.kind === 'multi') return sel.items.map((i) => i.id);
+    if ('id' in sel && sel.id) return [sel.id];
+    return [];
+  }
+
+  private isNodeSelectedInSelection(sel: ReturnType<typeof appState.getSelection>, id: string): boolean {
+    if (!sel) return false;
+    if (sel.kind === 'multi') return sel.items.some((it) => it.id === id);
+    if ('id' in sel && sel.id) return sel.id === id;
+    return false;
+  }
+
   public updateSelectionHighlight(): void {
     const sel = appState.getSelection();
+    const selectedIds = new Set(this.getSelectedNodeIds(sel));
     document.querySelectorAll('.graph-node').forEach((el) => {
       const id = (el as HTMLElement).dataset.id;
-      const isSel = sel && sel.id === id;
-      el.classList.toggle('selected', !!isSel);
+      const isSel = id ? selectedIds.has(id) : false;
+      el.classList.toggle('selected', isSel);
     });
     this.renderEdges(appState.getState());
   }
@@ -3681,32 +3827,159 @@ export class GraphCanvas {
       if ((e.target as HTMLElement).closest('.node-port')) return;
       if ((e.target as HTMLElement).closest('.wire-drop-menu')) return;
       if (this.activeWire) return;
-      // 允许左键空白区或中键平移
-      if (e.button !== 0 && e.button !== 1) return;
-      this.isPanning = true;
-      this.hasMovedPanning = false;
-      this.startPanX = e.clientX - this.panX;
-      this.startPanY = e.clientY - this.panY;
-      this.closeContextMenu();
-      this.closeDropMenu();
+
+      // 1. 中键 (button 1) 或 空格+左键：平移拖动画布
+      if (e.button === 1 || (e.button === 0 && this.isSpacePressed)) {
+        e.preventDefault();
+        this.isPanning = true;
+        this.hasMovedPanning = false;
+        this.startPanX = e.clientX - this.panX;
+        this.startPanY = e.clientY - this.panY;
+        this.viewport.style.cursor = 'grabbing';
+        this.closeContextMenu();
+        this.closeDropMenu();
+        return;
+      }
+
+      // 2. 左键空白区：框选多选 (Marquee Box Selection)
+      if (e.button === 0) {
+        this.isBoxSelecting = true;
+        this.hasMovedBoxSelect = false;
+        this.boxSelectScreenStart = { x: e.clientX, y: e.clientY };
+        this.boxSelectStartCanvas = this.clientToCanvasPos(e.clientX, e.clientY);
+        this.currentBoxSelectedItems = [];
+        this.closeContextMenu();
+        this.closeDropMenu();
+      }
     };
 
     window.addEventListener('mousemove', (e) => {
-      if (!this.isPanning) return;
-      const dx = Math.abs(e.clientX - (this.startPanX + this.panX));
-      const dy = Math.abs(e.clientY - (this.startPanY + this.panY));
-      if (dx > 3 || dy > 3) this.hasMovedPanning = true;
-      this.panX = e.clientX - this.startPanX;
-      this.panY = e.clientY - this.startPanY;
-      this.updateTransform();
+      if (this.isPanning) {
+        const dx = Math.abs(e.clientX - (this.startPanX + this.panX));
+        const dy = Math.abs(e.clientY - (this.startPanY + this.panY));
+        if (dx > 3 || dy > 3) this.hasMovedPanning = true;
+        this.panX = e.clientX - this.startPanX;
+        this.panY = e.clientY - this.startPanY;
+        this.updateTransform();
+        return;
+      }
+
+      if (this.isBoxSelecting) {
+        const dist = Math.hypot(e.clientX - this.boxSelectScreenStart.x, e.clientY - this.boxSelectScreenStart.y);
+        if (dist > 4) {
+          this.hasMovedBoxSelect = true;
+        }
+
+        if (this.hasMovedBoxSelect) {
+          if (!this.marqueeEl) {
+            this.marqueeEl = document.createElement('div');
+            this.marqueeEl.className = 'selection-marquee';
+            this.canvas.appendChild(this.marqueeEl);
+          }
+
+          const curPos = this.clientToCanvasPos(e.clientX, e.clientY);
+          const minX = Math.min(this.boxSelectStartCanvas.x, curPos.x);
+          const maxX = Math.max(this.boxSelectStartCanvas.x, curPos.x);
+          const minY = Math.min(this.boxSelectStartCanvas.y, curPos.y);
+          const maxY = Math.max(this.boxSelectStartCanvas.y, curPos.y);
+
+          this.marqueeEl.style.left = `${minX}px`;
+          this.marqueeEl.style.top = `${minY}px`;
+          this.marqueeEl.style.width = `${maxX - minX}px`;
+          this.marqueeEl.style.height = `${maxY - minY}px`;
+          this.marqueeEl.style.display = 'block';
+
+          const items: Array<{ kind: 'event' | 'condition' | 'subnode'; id: string; eventId?: string }> = [];
+
+          if (this.viewMode === 'subgraph' && this.subGraphEventId) {
+            const ev = project.getEvent(this.subGraphEventId);
+            ev?.actionGraph?.nodes.forEach((node) => {
+              const el = document.getElementById(`subnode-${node.id}`);
+              const w = el?.offsetWidth || 180;
+              const h = el?.offsetHeight || 60;
+              if (node.x < maxX && node.x + w > minX && node.y < maxY && node.y + h > minY) {
+                items.push({ kind: 'subnode', id: node.id, eventId: this.subGraphEventId! });
+              }
+            });
+          } else if (this.viewMode === 'main') {
+            const p = project.get();
+            p.events.forEach((ev) => {
+              const el = document.getElementById(`node-${ev.id}`);
+              const w = el?.offsetWidth || 180;
+              const h = el?.offsetHeight || 38;
+              if (ev.x < maxX && ev.x + w > minX && ev.y < maxY && ev.y + h > minY) {
+                items.push({ kind: 'event', id: ev.id });
+              }
+            });
+            p.conditions.forEach((c) => {
+              const el = document.getElementById(`node-${c.id}`);
+              const w = el?.offsetWidth || 180;
+              const h = el?.offsetHeight || 38;
+              if (c.x < maxX && c.x + w > minX && c.y < maxY && c.y + h > minY) {
+                items.push({ kind: 'condition', id: c.id });
+              }
+            });
+          }
+
+          this.currentBoxSelectedItems = items;
+          const boxedIds = new Set(items.map((it) => it.id));
+          document.querySelectorAll('.graph-node').forEach((el) => {
+            const nid = (el as HTMLElement).dataset.id;
+            el.classList.toggle('selected', nid ? boxedIds.has(nid) : false);
+          });
+        }
+      }
     });
 
     window.addEventListener('mouseup', () => {
-      this.isPanning = false;
+      if (this.isPanning) {
+        this.isPanning = false;
+        this.viewport.style.cursor = this.isSpacePressed ? 'grab' : '';
+      }
+
+      if (this.isBoxSelecting) {
+        this.isBoxSelecting = false;
+        if (this.marqueeEl) {
+          this.marqueeEl.style.display = 'none';
+        }
+
+        if (this.hasMovedBoxSelect) {
+          appState.selectMulti(this.currentBoxSelectedItems);
+          this.updateSelectionHighlight();
+          if (this.currentBoxSelectedItems.length > 0) {
+            appState.log(`📦 已框选 ${this.currentBoxSelectedItems.length} 个节点，可按住任一选中节点一起拖动`, true);
+          }
+        } else {
+          appState.select(null);
+        }
+        this.hasMovedBoxSelect = false;
+      }
+    });
+
+    this.viewport.addEventListener('auxclick', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        this.isSpacePressed = true;
+        if (!this.isPanning) {
+          this.viewport.style.cursor = 'grab';
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        this.isSpacePressed = false;
+        if (!this.isPanning) {
+          this.viewport.style.cursor = '';
+        }
+      }
     });
 
     this.viewport.onclick = (e) => {
-      if (this.hasMovedPanning || this.suppressNextViewportClick) return;
+      if (this.hasMovedPanning || this.hasMovedBoxSelect || this.suppressNextViewportClick) return;
       if (
         e.target === this.viewport ||
         e.target === this.canvas ||

@@ -2602,6 +2602,20 @@ input:checked + .slider:before {
   }
 }
 
+/* ==========================================================================
+   框选多选虚线框 (Marquee Selection Box)
+   ========================================================================== */
+.selection-marquee {
+  position: absolute;
+  border: 1.5px dashed #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  pointer-events: none;
+  z-index: 1000;
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+  display: none;
+}
+
 
 
 

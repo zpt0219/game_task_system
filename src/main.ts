@@ -86,6 +86,29 @@ async function initApp(): Promise<void> {
           appState.select({ kind: 'event', id: sel.eventId });
           appState.log(`🗑️ 已删除 Action Tree 节点：[${node.id}]（Ctrl+Z 可撤销）`);
         }
+      } else if (sel.kind === 'multi') {
+        const count = sel.items.length;
+        project.change((d) => {
+          sel.items.forEach((item) => {
+            if (item.kind === 'event') {
+              d.events = d.events.filter((x) => x.id !== item.id);
+            } else if (item.kind === 'condition') {
+              d.conditions = d.conditions.filter((x) => x.id !== item.id);
+              d.events.forEach((ev) => {
+                if (ev.incomingConditions) {
+                  ev.incomingConditions = ev.incomingConditions.filter((c) => c !== item.id);
+                }
+              });
+            } else if (item.kind === 'subnode' && item.eventId) {
+              const ev = d.events.find((x) => x.id === item.eventId);
+              if (ev?.actionGraph) {
+                ev.actionGraph.nodes = ev.actionGraph.nodes.filter((n) => n.id !== item.id && n.type !== 'start');
+              }
+            }
+          });
+        }, 'structure');
+        appState.select(null);
+        appState.log(`🗑️ 已批量删除 ${count} 个选中节点（Ctrl+Z 可撤销）`, true);
       }
     }
   });

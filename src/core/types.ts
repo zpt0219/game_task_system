@@ -215,6 +215,7 @@ export type Selection =
   | { kind: 'condition'; id: string }
   | { kind: 'var'; id: string }
   | { kind: 'subnode'; id: string; eventId: string }
+  | { kind: 'multi'; items: Array<{ kind: 'event' | 'condition' | 'subnode'; id: string; eventId?: string }> }
   | null;
 
 export interface DialogOption {
