@@ -30,6 +30,9 @@ interface ActiveWireDrag {
   hasDragged: boolean;
   snappedTargetId: string | null;
   snappedPortPos: { x: number; y: number } | null;
+  snappedPortSide?: 'left' | 'right' | 'top' | 'bottom';
+  reconnectFromTargetId?: string;
+  reconnectPortEl?: HTMLElement;
 }
 
 export class GraphCanvas {
@@ -1319,6 +1322,9 @@ export class GraphCanvas {
 
         el.style.left = `${newX}px`;
         el.style.top = `${newY}px`;
+        if (this.viewMode === 'main') {
+          this.updateAllEventPortsPlacement();
+        }
         this.renderEdges(appState.getState());
       };
 
@@ -1447,7 +1453,33 @@ export class GraphCanvas {
     }
 
     let cx1: number, cy1: number, cx2: number, cy2: number;
-    if (x2 >= x1) {
+    const snapSide = this.activeWire.snappedPortSide;
+
+    if (snapSide === 'top') {
+      const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
+      cx1 = x1 + (x2 >= x1 ? 30 : -30);
+      cy1 = y1;
+      cx2 = x2;
+      cy2 = y2 - dy;
+    } else if (snapSide === 'bottom') {
+      const dy = Math.max(Math.abs(y2 - y1) * 0.45, 35);
+      cx1 = x1 + (x2 >= x1 ? 30 : -30);
+      cy1 = y1;
+      cx2 = x2;
+      cy2 = y2 + dy;
+    } else if (snapSide === 'right') {
+      const dx = Math.max(Math.abs(x1 - x2) * 0.45, 40);
+      cx1 = x2 < x1 ? x1 - dx : x1 + dx;
+      cy1 = y1;
+      cx2 = x2 + dx;
+      cy2 = y2;
+    } else if (snapSide === 'left') {
+      const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
+      cx1 = x2 < x1 ? x1 - dx : x1 + dx;
+      cy1 = y1;
+      cx2 = x2 - dx;
+      cy2 = y2;
+    } else if (x2 >= x1) {
       const dx = Math.max(Math.abs(x2 - x1) * 0.45, 40);
       cx1 = x1 + dx;
       cy1 = y1;
@@ -1466,6 +1498,129 @@ export class GraphCanvas {
     path.style.display = 'block';
   }
 
+  /**
+   * 当用户拖拽已有 Event 节点的入端点时，支持沿 Event 卡片边缘平滑滑行，
+   * 连线始终保持连接；只有当完全远离该卡片一定距离后，才脱离吸附。
+   */
+  private updateSlidingWire(
+    clientX: number,
+    clientY: number,
+    canvasPos: { x: number; y: number }
+  ): void {
+    if (!this.activeWire || !this.activeWire.reconnectFromTargetId) return;
+
+    const origEvId = this.activeWire.reconnectFromTargetId;
+    const origEv = project.getEvent(origEvId);
+    const origEl = document.getElementById(`node-${origEvId}`);
+    const portEl = this.activeWire.reconnectPortEl;
+
+    if (!origEv || !origEl) {
+      this.checkMagnetSnapping(clientX, clientY, canvasPos);
+      return;
+    }
+
+    const evW = origEl.offsetWidth || 200;
+    const evH = origEl.offsetHeight || 38;
+    const left = origEv.x;
+    const top = origEv.y;
+    const right = left + evW;
+    const bottom = top + evH;
+
+    // 计算光标到该 Event 卡片矩形的距离
+    const dx = Math.max(left - canvasPos.x, 0, canvasPos.x - right);
+    const dy = Math.max(top - canvasPos.y, 0, canvasPos.y - bottom);
+    const distToCard = Math.hypot(dx, dy);
+
+    // 只要距离卡片边缘 <= 55px，就视为仍在卡片上滑行
+    if (distToCard <= 55) {
+      // 清除其他目标节点高亮
+      document.querySelectorAll('.snap-target-hover').forEach((el) => {
+        if (el !== origEl) el.classList.remove('snap-target-hover');
+      });
+      document.querySelectorAll('.snap-port-hover').forEach((el) => {
+        if (el !== portEl) el.classList.remove('snap-port-hover');
+      });
+
+      // 投影至卡片四条边缘，实现平滑滑行
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      const nx = (canvasPos.x - cx) / (evW / 2);
+      const ny = (canvasPos.y - cy) / (evH / 2);
+
+      let slideSide: 'left' | 'right' | 'top' | 'bottom';
+      let slideX: number;
+      let slideY: number;
+
+      if (Math.abs(nx) >= Math.abs(ny)) {
+        if (nx >= 0) {
+          slideSide = 'right';
+          slideX = right;
+          slideY = Math.max(top + 8, Math.min(bottom - 8, canvasPos.y));
+        } else {
+          slideSide = 'left';
+          slideX = left;
+          slideY = Math.max(top + 8, Math.min(bottom - 8, canvasPos.y));
+        }
+      } else {
+        if (ny >= 0) {
+          slideSide = 'bottom';
+          slideX = Math.max(left + 12, Math.min(right - 12, canvasPos.x));
+          slideY = bottom;
+        } else {
+          slideSide = 'top';
+          slideX = Math.max(left + 12, Math.min(right - 12, canvasPos.x));
+          slideY = top;
+        }
+      }
+
+      // 实时动态更新吸附端点的样式与坐标
+      if (portEl) {
+        if (slideSide === 'right') {
+          portEl.style.left = 'auto';
+          portEl.style.right = '-7px';
+          portEl.style.top = `${slideY - top}px`;
+          portEl.style.bottom = 'auto';
+          portEl.style.transform = 'translateY(-50%)';
+        } else if (slideSide === 'left') {
+          portEl.style.left = '-7px';
+          portEl.style.right = 'auto';
+          portEl.style.top = `${slideY - top}px`;
+          portEl.style.bottom = 'auto';
+          portEl.style.transform = 'translateY(-50%)';
+        } else if (slideSide === 'top') {
+          portEl.style.left = `${slideX - left}px`;
+          portEl.style.right = 'auto';
+          portEl.style.top = '-7px';
+          portEl.style.bottom = 'auto';
+          portEl.style.transform = 'translateX(-50%)';
+        } else {
+          portEl.style.left = `${slideX - left}px`;
+          portEl.style.right = 'auto';
+          portEl.style.top = 'auto';
+          portEl.style.bottom = '-7px';
+          portEl.style.transform = 'translateX(-50%)';
+        }
+        portEl.dataset.side = slideSide;
+        portEl.style.opacity = '1';
+        portEl.classList.add('snap-port-hover', 'port-active');
+      }
+
+      origEl.classList.add('snap-target-hover');
+      this.activeWire.snappedTargetId = origEvId;
+      this.activeWire.snappedPortPos = { x: slideX, y: slideY };
+      this.activeWire.snappedPortSide = slideSide;
+    } else {
+      // 已完全脱离当前卡片一定距离 (> 55px)
+      origEl.classList.remove('snap-target-hover');
+      if (portEl) {
+        portEl.classList.remove('snap-port-hover', 'port-active');
+        portEl.style.opacity = '0.35';
+      }
+      // 检查是否滑入或吸附至其他 Event 节点
+      this.checkMagnetSnapping(clientX, clientY, canvasPos);
+    }
+  }
+
   private checkMagnetSnapping(clientX: number, clientY: number, canvasPos: { x: number; y: number }): void {
     if (!this.activeWire) return;
 
@@ -1475,12 +1630,14 @@ export class GraphCanvas {
 
     this.activeWire.snappedTargetId = null;
     this.activeWire.snappedPortPos = null;
+    this.activeWire.snappedPortSide = undefined;
 
     let bestCandidate: {
       id: string;
       portPos: { x: number; y: number };
       el: HTMLElement;
       portIn?: HTMLElement | null;
+      side?: 'left' | 'right' | 'top' | 'bottom';
       dist: number;
     } | null = null;
 
@@ -1489,6 +1646,9 @@ export class GraphCanvas {
       const cond = project.getCondition(this.activeWire.sourceId);
 
       for (const ev of p.events) {
+        if (this.activeWire.reconnectFromTargetId && ev.id === this.activeWire.reconnectFromTargetId) {
+          continue;
+        }
         const el = document.getElementById(`node-${ev.id}`);
         if (!el) continue;
 
@@ -1502,17 +1662,17 @@ export class GraphCanvas {
         let snapX: number;
         let snapY: number;
         if (side === 'right') {
-          snapX = ev.x + evW + 7;
-          snapY = ev.y + evH / 2;
+          snapX = ev.x + evW;
+          snapY = Math.max(ev.y + 8, Math.min(ev.y + evH - 8, canvasPos.y));
         } else if (side === 'left') {
-          snapX = ev.x - 7;
-          snapY = ev.y + evH / 2;
+          snapX = ev.x;
+          snapY = Math.max(ev.y + 8, Math.min(ev.y + evH - 8, canvasPos.y));
         } else if (side === 'top') {
-          snapX = ev.x + evW / 2;
-          snapY = ev.y - 7;
+          snapX = Math.max(ev.x + 12, Math.min(ev.x + evW - 12, canvasPos.x));
+          snapY = ev.y;
         } else {
-          snapX = ev.x + evW / 2;
-          snapY = ev.y + evH + 7;
+          snapX = Math.max(ev.x + 12, Math.min(ev.x + evW - 12, canvasPos.x));
+          snapY = ev.y + evH;
         }
 
         const dist = Math.hypot(canvasPos.x - snapX, canvasPos.y - snapY);
@@ -1525,13 +1685,14 @@ export class GraphCanvas {
 
         if (dist < 55 || isInside) {
           if (!bestCandidate || dist < bestCandidate.dist) {
-            const existingPort = el.querySelector(`.port-in[data-cond-id="${this.activeWire.sourceId}"]`) as HTMLElement | null ||
-                                 el.querySelector('.port-in') as HTMLElement | null;
+            const existingPort = (el.querySelector(`.port-in[data-cond-id="${this.activeWire.sourceId}"]`) as HTMLElement | null) ||
+                                 (el.querySelector('.port-in') as HTMLElement | null);
             bestCandidate = {
               id: ev.id,
               portPos: { x: snapX, y: snapY },
               el,
               portIn: existingPort,
+              side,
               dist
             };
           }
@@ -1559,7 +1720,7 @@ export class GraphCanvas {
 
         if (dist < 40 || isInside) {
           if (!bestCandidate || dist < bestCandidate.dist) {
-            bestCandidate = { id: node.id, portPos: portCanvasPos, el, portIn, dist };
+            bestCandidate = { id: node.id, portPos: portCanvasPos, el, portIn, side: 'left', dist };
           }
         }
       }
@@ -1568,6 +1729,7 @@ export class GraphCanvas {
     if (bestCandidate) {
       this.activeWire.snappedTargetId = bestCandidate.id;
       this.activeWire.snappedPortPos = bestCandidate.portPos;
+      this.activeWire.snappedPortSide = bestCandidate.side;
       bestCandidate.el.classList.add('snap-target-hover');
       if (bestCandidate.portIn) {
         bestCandidate.portIn.classList.add('snap-port-hover');
@@ -1585,9 +1747,11 @@ export class GraphCanvas {
       isDefault?: boolean;
       optId?: string;
       initialHasDragged?: boolean;
+      reconnectFromTargetId?: string;
+      reconnectPortEl?: HTMLElement;
     }
   ): void {
-    if (e.button !== 0) return;
+    if (!config.initialHasDragged && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
 
@@ -1610,13 +1774,24 @@ export class GraphCanvas {
       currentX: hasDragged ? pointerCanvasPos.x : startPos.x,
       currentY: hasDragged ? pointerCanvasPos.y : startPos.y,
       hasDragged,
-      snappedTargetId: null,
-      snappedPortPos: null
+      snappedTargetId: config.reconnectFromTargetId || null,
+      snappedPortPos: config.reconnectPortEl ? this.getPortCanvasPos(config.reconnectPortEl) : null,
+      snappedPortSide: undefined,
+      reconnectFromTargetId: config.reconnectFromTargetId,
+      reconnectPortEl: config.reconnectPortEl
     };
+
+    if (config.reconnectFromTargetId) {
+      this.renderEdges(appState.getState());
+    }
 
     portEl.classList.add('port-active');
     if (hasDragged) {
-      this.checkMagnetSnapping(e.clientX, e.clientY, pointerCanvasPos);
+      if (this.activeWire.reconnectFromTargetId) {
+        this.updateSlidingWire(e.clientX, e.clientY, pointerCanvasPos);
+      } else {
+        this.checkMagnetSnapping(e.clientX, e.clientY, pointerCanvasPos);
+      }
     }
     this.ensureRubberbandElement();
     this.updateRubberbandWire();
@@ -1643,7 +1818,11 @@ export class GraphCanvas {
         this.activeWire.hasDragged = true;
       }
 
-      this.checkMagnetSnapping(moveEv.clientX, moveEv.clientY, cPos);
+      if (this.activeWire.reconnectFromTargetId) {
+        this.updateSlidingWire(moveEv.clientX, moveEv.clientY, cPos);
+      } else {
+        this.checkMagnetSnapping(moveEv.clientX, moveEv.clientY, cPos);
+      }
       this.updateRubberbandWire();
     };
 
@@ -1660,6 +1839,61 @@ export class GraphCanvas {
         setTimeout(() => {
           this.suppressNextViewportClick = false;
         }, 0);
+
+        if (wire.reconnectFromTargetId) {
+          const origTargetId = wire.reconnectFromTargetId;
+          const condId = wire.sourceId;
+
+          if (wire.snappedTargetId === origTargetId) {
+            // 用户在原 Event 卡片上滑行后松开：保持连接！
+            const cond = project.getCondition(condId);
+            const ev = project.getEvent(origTargetId);
+            appState.log(`保留依赖关系：[${cond?.title || condId}] ➔ [${ev?.title || origTargetId}]`, true);
+            this.cancelActiveWire();
+            this.renderEdges(appState.getState());
+          } else if (wire.snappedTargetId && wire.snappedTargetId !== origTargetId) {
+            // 改接到新 Event
+            const newTargetId = wire.snappedTargetId;
+            const cond = project.getCondition(condId);
+            const oldEv = project.getEvent(origTargetId);
+            const newEv = project.getEvent(newTargetId);
+
+            this.cancelActiveWire();
+
+            project.change((d) => {
+              const oldE = d.events.find((x) => x.id === origTargetId);
+              if (oldE && oldE.incomingConditions) {
+                oldE.incomingConditions = oldE.incomingConditions.filter((c) => c !== condId);
+              }
+              const newE = d.events.find((x) => x.id === newTargetId);
+              if (newE) {
+                if (!newE.incomingConditions) newE.incomingConditions = [];
+                if (!newE.incomingConditions.includes(condId)) {
+                  newE.incomingConditions.push(condId);
+                }
+              }
+            }, 'structure');
+
+            appState.log(
+              `🔄 已将依赖关系改接：[${cond?.title || condId}] 从 [${oldEv?.title || origTargetId}] 改至 [${newEv?.title || newTargetId}]`,
+              true
+            );
+            this.pulseNode(newTargetId);
+          } else {
+            // 只有当完全离开 Event 卡片一定距离，并且松开鼠标：才消失并断开连接！
+            const cond = project.getCondition(condId);
+            const oldEv = project.getEvent(origTargetId);
+
+            this.cancelActiveWire();
+
+            project.disconnectCondition(origTargetId, condId);
+            appState.log(
+              `✂️ 已断开 Condition 依赖：[${cond?.title || condId}] ➔ [${oldEv?.title || origTargetId}]（找不到连接点，Ctrl+Z 可撤销）`,
+              true
+            );
+          }
+          return;
+        }
 
         if (wire.snappedTargetId) {
           this.completeWireConnection(wire.snappedTargetId);
@@ -1749,10 +1983,7 @@ export class GraphCanvas {
           if (Math.hypot(moveEv.clientX - downX, moveEv.clientY - downY) > 4) {
             unplugged = true;
             cleanupWait();
-            project.disconnectCondition(ev.id, condId);
-            appState.log(`🔌 已拔出 Condition 依赖连线：[${condId}]，可重新拖动改接至其他 Event`, true);
 
-            // 注意：disconnectCondition 内部触发了 rebuildDOM，必须在 rebuild 之后重新查询最新的 DOM 节点！
             const condEl = document.getElementById(`node-${condId}`);
             const condPos = project.getCondition(condId);
             const mouseCanvasPos = this.clientToCanvasPos(moveEv.clientX, moveEv.clientY);
@@ -1769,7 +2000,9 @@ export class GraphCanvas {
               this.handlePortPointerDown(moveEv, condPortOut, {
                 mode: 'main',
                 sourceId: condId,
-                initialHasDragged: true
+                initialHasDragged: true,
+                reconnectFromTargetId: ev.id,
+                reconnectPortEl: _portInEl
               });
             }
           }
@@ -2036,6 +2269,13 @@ export class GraphCanvas {
       if (this.activeWire.sourcePortEl) {
         this.activeWire.sourcePortEl.classList.remove('port-active');
       }
+      if (this.activeWire.reconnectPortEl) {
+        this.activeWire.reconnectPortEl.style.opacity = '1';
+        this.activeWire.reconnectPortEl.classList.remove('port-active', 'snap-port-hover');
+      }
+      if (this.activeWire.reconnectFromTargetId) {
+        this.updateEventPortsPlacement(this.activeWire.reconnectFromTargetId);
+      }
       this.activeWire = null;
     }
     if (this.rubberbandPath) {
@@ -2214,6 +2454,16 @@ export class GraphCanvas {
     const edges = mainGraphEdges(p);
 
     edges.forEach((edge) => {
+      // 若当前正在拖拽改接此条依赖线，跳过静态连线绘制（由 updateRubberbandWire 动态绘制）
+      if (
+        this.activeWire &&
+        this.activeWire.mode === 'main' &&
+        this.activeWire.reconnectFromTargetId === edge.to &&
+        this.activeWire.sourceId === edge.from
+      ) {
+        return;
+      }
+
       const fromEl = document.getElementById(`node-${edge.from}`);
       const toEl = document.getElementById(`node-${edge.to}`);
       if (!fromEl || !toEl) return;
