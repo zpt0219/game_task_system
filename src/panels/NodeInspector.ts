@@ -14,14 +14,14 @@ import {
 } from '../core/types';
 import { project, uid } from '../core/project';
 import { appState } from '../core/state';
-import { evalCond, evalCondition, getEventStatus, runEvent } from '../core/engine';
+import { evalCond, evalCondition, getEventStatus } from '../core/engine';
 import { varWriters, varReaders, eventsDependingOn, varsWrittenBy } from '../core/graph';
 import { RpgDialog } from './RpgDialog';
 
 export class NodeInspector {
   private container: HTMLElement;
 
-  constructor(private dialog: RpgDialog) {
+  constructor(_dialog?: RpgDialog) {
     this.container = document.getElementById('inspectorContent') as HTMLElement;
 
     appState.onSelectionChange(() => this.render());
@@ -260,7 +260,10 @@ export class NodeInspector {
     metaCard.className = 'inspector-section';
     metaCard.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span class="event-type-badge">EVENT 节点</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="event-type-badge">EVENT 节点</span>
+          <span class="event-status-pill ${evStatus.colorClass}" style="font-size: 11px;">${evStatus.title}</span>
+        </div>
         <button id="btnDeleteEvent" class="btn-node-delete" title="删除此 Event 节点 (快捷键: Delete)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -307,47 +310,7 @@ export class NodeInspector {
       appState.log(`🗑️ 已删除 Event 节点：[${ev.title}]（Ctrl+Z 可撤销）`);
     };
 
-    // 2. 试玩快速执行按钮
-    const playCard = document.createElement('div');
-    playCard.className = 'inspector-section';
-    playCard.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <span style="font-size: 11px; color: #94a3b8;">预计执行逻辑：</span>
-        <span class="event-status-pill ${evStatus.colorClass}" style="font-size: 11px;">
-          ${evStatus.title}
-        </span>
-      </div>
-      <button id="btnPlayEvent" class="dialog-btn primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;">
-        <span>▶</span> 触发执行 (Play Action Tree)
-      </button>
-    `;
-    this.container.appendChild(playCard);
-
-    playCard.querySelector('#btnPlayEvent')?.addEventListener('click', () => {
-      appState.setRunningEventId(ev.id);
-      runEvent(
-        {
-          project: project.get(),
-          getState: () => appState.getState(),
-          mutate: (fn) => {
-            appState.setRunningEventId(ev.id);
-            appState.mutate(fn);
-          },
-          showDialog: (cfg) => {
-            const origConfirm = cfg.onConfirm;
-            cfg.onConfirm = () => {
-              appState.setRunningEventId(ev.id);
-              if (origConfirm) origConfirm();
-            };
-            this.dialog.show(cfg);
-          },
-          log: (msg, hl) => appState.log(msg, hl)
-        },
-        ev
-      );
-    });
-
-    // 3. 依赖的前置条件 (Conditions) 管理
+    // 2. 依赖的前置条件 (Conditions) 管理
     const incomingCondIds = ev.incomingConditions ?? [];
     const trigCard = document.createElement('div');
     trigCard.className = 'inspector-section';
