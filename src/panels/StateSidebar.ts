@@ -12,7 +12,12 @@ export class StateSidebar {
 
     this.render();
 
-    appState.onStateChange(() => this.render());
+    appState.onStateChange((_state, meta) => {
+      this.render();
+      if (meta && meta.changedVars && meta.changedVars.length > 0) {
+        meta.changedVars.forEach((k) => this.flashVarItem(k));
+      }
+    });
     appState.onModeChange(() => this.render());
     appState.onLog((msg, hl) => this.appendLog(msg, hl));
     project.onChange((src) => {
@@ -296,6 +301,27 @@ export class StateSidebar {
     this.container.querySelector('#btnAddVar')?.addEventListener('click', () => {
       RegisterVarModal.open();
     });
+  }
+
+  private flashVarItem(key: string): void {
+    const el = this.container.querySelector(`[data-key="${key}"]`) as HTMLElement | null;
+    if (el) {
+      el.classList.add('var-item-glow');
+      setTimeout(() => el.classList.remove('var-item-glow'), 1400);
+    }
+    if (key === 'hero.hp') {
+      const hpEl = document.getElementById('statHp');
+      if (hpEl) {
+        hpEl.classList.add('var-item-glow');
+        setTimeout(() => hpEl.classList.remove('var-item-glow'), 1400);
+      }
+    } else if (key === 'hero.gold') {
+      const goldSpan = this.container.querySelector('#statGold, .stat-item:has(#btnGoldPlus)') as HTMLElement | null;
+      if (goldSpan) {
+        goldSpan.classList.add('var-item-glow');
+        setTimeout(() => goldSpan.classList.remove('var-item-glow'), 1400);
+      }
+    }
   }
 
   public appendLog(message: string, isHighlight = false): void {

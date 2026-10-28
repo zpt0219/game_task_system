@@ -218,12 +218,23 @@ export class NodeInspector {
     this.container.appendChild(playCard);
 
     playCard.querySelector('#btnPlayEvent')?.addEventListener('click', () => {
+      appState.setRunningEventId(ev.id);
       runEvent(
         {
           project: project.get(),
           getState: () => appState.getState(),
-          mutate: (fn) => appState.mutate(fn),
-          showDialog: (cfg) => this.dialog.show(cfg),
+          mutate: (fn) => {
+            appState.setRunningEventId(ev.id);
+            appState.mutate(fn);
+          },
+          showDialog: (cfg) => {
+            const origConfirm = cfg.onConfirm;
+            cfg.onConfirm = () => {
+              appState.setRunningEventId(ev.id);
+              if (origConfirm) origConfirm();
+            };
+            this.dialog.show(cfg);
+          },
           log: (msg, hl) => appState.log(msg, hl)
         },
         ev

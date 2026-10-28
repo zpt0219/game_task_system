@@ -1,6 +1,12 @@
 import { WorldState, EditorMode, Selection, VarValue, ProjectData } from './types';
 
-export type StateListener = (state: WorldState) => void;
+export interface StateChangeMeta {
+  prevState: WorldState;
+  changedVars: string[];
+  sourceEventId?: string | null;
+}
+
+export type StateListener = (state: WorldState, meta?: StateChangeMeta) => void;
 export type ModeListener = (mode: EditorMode) => void;
 export type SelectionListener = (sel: Selection) => void;
 export type FocalListener = (varKey: string | null) => void;
@@ -22,6 +28,7 @@ class AppState {
   private selection: Selection = null;
   private focalVar: string | null = null;
   private subGraphEventId: string | null = null;
+  private currentRunningEventId: string | null = null;
 
   private stateListeners = new Set<StateListener>();
   private modeListeners = new Set<ModeListener>();
@@ -30,18 +37,48 @@ class AppState {
   private subGraphListeners = new Set<SubGraphListener>();
   private logListeners = new Set<LogListener>();
 
+  public setRunningEventId(id: string | null): void {
+    this.currentRunningEventId = id;
+  }
+
+  public getRunningEventId(): string | null {
+    return this.currentRunningEventId;
+  }
+
   public getState(): WorldState {
     return this.state;
   }
 
   public setState(s: WorldState): void {
+    const prevState = { ...this.state };
     this.state = s;
-    this.stateListeners.forEach((fn) => fn(this.state));
+    const allKeys = new Set([...Object.keys(prevState), ...Object.keys(this.state)]);
+    const changedVars: string[] = [];
+    allKeys.forEach((k) => {
+      if (prevState[k] !== this.state[k]) changedVars.push(k);
+    });
+    const meta: StateChangeMeta = {
+      prevState,
+      changedVars,
+      sourceEventId: this.currentRunningEventId
+    };
+    this.stateListeners.forEach((fn) => fn(this.state, meta));
   }
 
   public mutate(fn: (draft: WorldState) => void): void {
+    const prevState = { ...this.state };
     fn(this.state);
-    this.stateListeners.forEach((l) => l(this.state));
+    const allKeys = new Set([...Object.keys(prevState), ...Object.keys(this.state)]);
+    const changedVars: string[] = [];
+    allKeys.forEach((k) => {
+      if (prevState[k] !== this.state[k]) changedVars.push(k);
+    });
+    const meta: StateChangeMeta = {
+      prevState,
+      changedVars,
+      sourceEventId: this.currentRunningEventId
+    };
+    this.stateListeners.forEach((l) => l(this.state, meta));
   }
 
   public getMode(): EditorMode {
